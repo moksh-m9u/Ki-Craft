@@ -6,6 +6,7 @@ This guide sets up the project for development: installing it, running each part
 
 - [Prerequisites](#prerequisites)
 - [Setup](#setup)
+- [Choosing an embedding backend](#choosing-an-embedding-backend)
 - [Environment variables](#environment-variables)
 - [Dependencies](#dependencies)
 - [Running the API](#running-the-api)
@@ -28,7 +29,7 @@ This guide sets up the project for development: installing it, running each part
 | poppler, tesseract, libmagic, pandoc | ingestion only | see [Ingesting a new PDF](#ingesting-a-new-pdf) |
 | Docker | building the API image only | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
 
-You also need a Gemini API key and a watsonx.ai API key with its project id; see [Environment variables](#environment-variables).
+You also need a Gemini API key for answers, and one way to embed questions: a free OpenRouter key (no credit card), a watsonx.ai key with its project id, or the local Granite model; see [Choosing an embedding backend](#choosing-an-embedding-backend).
 
 ## Setup
 
@@ -37,11 +38,11 @@ The vector store is already built, so the API and the dashboard run straight aft
 Clone the repository:
 
 ```bash
-git clone https://github.com/moksh-m9u/Multimodal-Rag.git
+git clone https://github.com/moksh-m9u/Ki-Craft.git
 ```
 
 ```bash
-cd Multimodal-Rag
+cd Ki-Craft
 ```
 
 Create the virtual environment and install every dependency (API, dashboard, ingestion, tests). `pyproject.toml` lists them and `uv.lock` pins the exact versions; uv also downloads Python 3.13 if the machine lacks it:
@@ -54,7 +55,7 @@ uv sync
 source .venv/bin/activate
 ```
 
-Create `.env` from the template and fill in the three keys (see [Environment variables](#environment-variables)):
+Create `.env` from the template and fill in `GEMINI_API_KEY` and `OPENROUTER_API_KEY`. The template selects the OpenRouter embedding backend; see [Choosing an embedding backend](#choosing-an-embedding-backend) for the others and [Environment variables](#environment-variables) for the rest:
 
 ```bash
 cp .env.example .env
@@ -80,6 +81,93 @@ API_BASE_URL=http://127.0.0.1:8001 streamlit run app/dashboard.py
 
 Open http://localhost:8501 and ask a question on the Query & Retrieve page.
 
+## Choosing an embedding backend
+
+A question is turned into a vector (an [embedding](docs/GLOSSARY.md)) and compared with the vectors of the stored summaries, so both must come from the same model, or the search finds nonsense. `EMBEDDING_BACKEND` chooses the model, and the store keeps one [collection](docs/GLOSSARY.md) per model, so changing the backend never mixes vectors:
+
+| `EMBEDDING_BACKEND` | Model | Collection in `dbv2/chroma_db` | Needs | In the API Docker image |
+|---|---|---|---|---|
+| `openrouter` | `OPENROUTER_EMBEDDING_MODEL`, default `nvidia/nemotron-3-embed-1b:free` (2,048 dimensions) | `nvidia-nemotron-3-embed-1b` (shipped) | a free OpenRouter key; no credit card | yes |
+| `watsonx` (used when unset) | `ibm/granite-embedding-278m-multilingual` (768 dimensions) | `langchain` (shipped; the original) | an IBM Cloud API key and a watsonx.ai project | yes |
+| `local` | the same Granite model, as a GGUF file run by llama.cpp | `langchain` | `uv sync --extra local-embeddings` and a 303 MB model file; about 630 MB of RAM | no |
+
+Both API backends send text to a third party: every question, and at ingestion or re-embedding every summary. Use `local` when the documents must stay on your machine. The models are compared, with measurements, in [docs/TRADEOFFS.md](docs/TRADEOFFS.md), section 4.
+
+List the store's collections and the one your settings use (no network call):
+
+```bash
+python -m scripts.reembed --status
+```
+
+The API never searches a collection with the wrong model. When the configured model has no collection, or its collection was made by another model, `/health` and every query return 503 with a message that names the fix.
+
+### OpenRouter
+
+Create a key at https://openrouter.ai/settings/keys and put it in `.env`, unquoted:
+
+```
+EMBEDDING_BACKEND=openrouter
+OPENROUTER_API_KEY=sk-or-...
+```
+
+The default model is a free one, so no credit is needed. Free models allow 20 requests a minute and 50 a day per account (1,000 a day once the account has bought $10 of credit). Every question is one request, and re-embedding the whole corpus is 5, because 64 summaries go in each request (`OPENROUTER_EMBEDDING_BATCH_SIZE`). See how many are left today (this call is not counted):
+
+```bash
+python -c "import json, urllib.request; from dotenv import dotenv_values; key = dotenv_values('.env')['OPENROUTER_API_KEY']; print(json.load(urllib.request.urlopen(urllib.request.Request('https://openrouter.ai/api/v1/key', headers={'Authorization': 'Bearer ' + key})))['data']['free_model_daily_requests'])"
+```
+
+Free endpoints can also be withdrawn, can answer 503 when overloaded (retried `OPENROUTER_MAX_RETRIES` times), and their provider may log what it receives. OpenRouter refuses them with 404 "No endpoints found matching your data policy" until free endpoints are allowed at https://openrouter.ai/settings/privacy. The same model without `:free` is the paid tier: it gives the same vectors, so it uses the same collection.
+
+### Using another OpenRouter model
+
+Any model listed at https://openrouter.ai/api/v1/embeddings/models works. Its collection is built from the summaries already in the store: no PDF is parsed and nothing is summarised again. See what it would send first:
+
+```bash
+EMBEDDING_BACKEND=openrouter OPENROUTER_EMBEDDING_MODEL=baai/bge-m3 python -m scripts.reembed --dry-run
+```
+
+Then build it:
+
+```bash
+EMBEDDING_BACKEND=openrouter OPENROUTER_EMBEDDING_MODEL=baai/bge-m3 python -m scripts.reembed
+```
+
+This copies every record of the `langchain` collection (summary, metadata and record id) into the model's collection with new vectors. Record ids are kept, so a figure URL (`/v1/images/{record_id}/{position}`) works whichever collection the API serves, and the figure files are not touched. Batches are written to `<collection>-partial`, so an interrupted run (a rate limit, a network error) resumes with the same command without paying for the finished batches again; the copy is checked record by record (ids, summaries, metadata, one vector size) and only then renamed to `<collection>`, where the API finds it. Then set `OPENROUTER_EMBEDDING_MODEL` in `.env`.
+
+To go back, change `EMBEDDING_BACKEND` or `OPENROUTER_EMBEDDING_MODEL` back; no other collection was changed. To delete a collection you built:
+
+```bash
+python -c "import chromadb; chromadb.PersistentClient('dbv2/chroma_db').delete_collection('baai-bge-m3')"
+```
+
+### watsonx
+
+Set `EMBEDDING_BACKEND=watsonx` (or leave it unset) with `WATSONX_API_KEY`, `WATSONX_PROJECT_ID` and `WATSONX_URL`. IBM asks for a credit card when the account is created, even for the free plan.
+
+### Local Granite (GGUF)
+
+To use the store with no watsonx account, run the embedder on your machine. The stored vectors were made by `ibm/granite-embedding-278m-multilingual`; a [GGUF](docs/GLOSSARY.md) build of the same model, run by llama.cpp with no torch, lands in the same vector space. The Q8_0 file scores cosine 0.9999 against 50 stored vectors and returns the same top-5 chunks for 12 test questions, and re-storing `json/ne555.json` with it gave vectors at cosine 0.9999 to the watsonx ones, so it works for retrieval and ingestion.
+
+Install llama-cpp-python (it compiles llama.cpp, so a C++ compiler and cmake are needed):
+
+```bash
+uv sync --extra local-embeddings
+```
+
+Download the model (303 MB) into `models/`, which git ignores. The revision is pinned so the file cannot change under you:
+
+```bash
+python -c "from huggingface_hub import hf_hub_download; hf_hub_download('bartowski/granite-embedding-278m-multilingual-GGUF', 'granite-embedding-278m-multilingual-Q8_0.gguf', revision='61fba13303a369d52a088ccb745be93ecc2034f3', local_dir='models')"
+```
+
+In `.env`, set `EMBEDDING_BACKEND=local`. Then retrieve without any answer model, so no Gemini key is needed:
+
+```bash
+curl -X POST http://127.0.0.1:8001/v1/retrieve -H 'Content-Type: application/json' -d '{"query": "LM317 reference voltage", "top_k": 5}'
+```
+
+The smaller Q4_K_M file (219 MB) also works but drifts a little (minimum cosine 0.991, 58 of 60 top-5 chunks the same); point `LOCAL_EMBEDDING_GGUF_PATH` at it to use it. Another embedder works only if it produces vectors in the same space. Two separately trained models almost never do, even with 768 dimensions. To check a candidate, embed a few stored summaries with it and compare each with its stored vector; a cosine near 1.0 means the same space, anything much lower means the store must be re-indexed.
+
 ## Environment variables
 
 Copy `.env.example` to `.env` in the repository root and fill in the values. Write the values without quotes: `docker run --env-file` reads each line literally, so a quoted value reaches the container with the quotes included. `.env` is ignored by git; never commit it.
@@ -91,10 +179,15 @@ cp .env.example .env
 | Variable | Needed for | Notes |
 |---|---|---|
 | `GEMINI_API_KEY` | Answer generation | Create one at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-| `WATSONX_API_KEY` | Embedding every question, and every chunk at ingestion | An IBM Cloud API key |
+| `OPENROUTER_API_KEY` | `EMBEDDING_BACKEND=openrouter`: embedding every question, and every summary at ingestion | Create one at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys); free models need no credit |
+| `OPENROUTER_EMBEDDING_MODEL` | Same | Defaults to `nvidia/nemotron-3-embed-1b:free`; another model needs its own collection (`python -m scripts.reembed`) |
+| `WATSONX_API_KEY` | `EMBEDDING_BACKEND=watsonx`: embedding every question, and every summary at ingestion | An IBM Cloud API key |
 | `WATSONX_PROJECT_ID` | Same | The id of your watsonx.ai project |
 | `WATSONX_URL` | Same | Region endpoint; defaults to `https://eu-de.ml.cloud.ibm.com` |
-| `HF_TOKEN` | Ingestion only (chunk summaries) | Create one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) |
+| `EMBEDDING_BACKEND` | Choosing the embedding model | `openrouter`, `watsonx` (used when unset) or `local`; see [Choosing an embedding backend](#choosing-an-embedding-backend) |
+| `LOCAL_EMBEDDING_GGUF_PATH` | Local embeddings | The GGUF file; defaults to `models/granite-embedding-278m-multilingual-Q8_0.gguf` |
+| `LOCAL_EMBEDDING_THREADS` | Local embeddings | CPU threads for llama.cpp; defaults to 1, which suits a small server |
+| `HF_TOKEN` | Ingestion (chunk summaries); optionally the local embedding model download | Create one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens). The local embedding model is public, so the token only raises download limits |
 | `API_BASE_URL` | Dashboard | Where the dashboard finds the API; defaults to `http://localhost:8000` |
 | `CORS_ALLOWED_ORIGINS` | API | Comma-separated origins allowed to call the API from a browser |
 | `GENERATION_MAX_TOKENS` | API | Output token limit per answer; defaults to 512 |
@@ -224,7 +317,7 @@ python -m pytest -q -p no:cacheprovider tests/test_embed.py
 Ingestion is not needed to use the five documents that ship with the repository. Read this section before running it:
 
 - It calls a vision model once for every chunk with tables or figures. `--backend huggingface` (the default) uses GLM-4.5V on the Hugging Face router, which needs `HF_TOKEN` and credit. `--backend local` uses a model on your Mac through `mlx_vlm.server`; see below.
-- It calls watsonx once per chunk for the embedding.
+- It embeds every summary with the configured embedding backend and writes the records into that model's collection only. To add the document to another model's collection too, run `python -m scripts.ingest json/<name>.json` again with that backend. Figure files are shared by every collection, so replacing a document (`--replace`) rewrites its figures for all of them.
 - It writes to the tracked store in `dbv2/chroma_db`, so it changes files that git tracks.
 - One script, `scripts/ingest.py`, takes either input. Both are stored by the same function, `src/ingestion/pipeline.py:store_export`: a PDF is first turned into an export, then stored like any other. Each figure becomes a file in `dbv2/images`, and the record holds its path and a `source` name.
 
@@ -319,6 +412,22 @@ Run:
 docker run --rm -p 8000:8000 --env-file .env multimodal-rag-api
 ```
 
+The image embeds through an API only: it holds both shipped collections, the OpenRouter and watsonx clients, and no model weights or ML framework. `-e` overrides a value from `.env`, so one image serves either backend:
+
+```bash
+docker run --rm -p 8000:8000 --env-file .env -e EMBEDDING_BACKEND=openrouter multimodal-rag-api
+```
+
+`EMBEDDING_BACKEND=local` is not in this image: `/health` returns 503 saying so. The optional local build (`--build-arg EMBEDDING_BACKEND=local`, described at the top of the `Dockerfile`) adds llama.cpp and the GGUF file and grows the image to about 1.85 GB.
+
+A collection you built on your machine, for example with another OpenRouter model, is used by mounting the store over the one in the image:
+
+```bash
+docker run --rm -p 8000:8000 --env-file .env -e EMBEDDING_BACKEND=openrouter -e OPENROUTER_EMBEDDING_MODEL=baai/bge-m3 -v "$PWD/dbv2/chroma_db:/app/dbv2/chroma_db" multimodal-rag-api
+```
+
+Measured on 2026-11-20 with OpenRouter: 191 MiB idle and 228 MB at peak. Under 512 MB and 0.1 CPU (Render's free tier) it starts in about 2.5 minutes and answers without being killed; the local GGUF image runs out of memory there.
+
 Check:
 
 ```bash
@@ -341,7 +450,12 @@ Every tunable lives in `config/settings.py`.
 
 | Setting | Value | Purpose |
 |---|---|---|
-| `EMBEDDING_MODEL` | `ibm/granite-embedding-278m-multilingual` | Embedding model on watsonx.ai; changing it means re-indexing |
+| `EMBEDDING_MODEL` | `ibm/granite-embedding-278m-multilingual` | The Granite model of the watsonx and local backends; its collection is `langchain` |
+| `EMBEDDING_BACKEND` | `watsonx` | `openrouter` calls `OPENROUTER_EMBEDDING_MODEL`; `local` runs a GGUF build of the Granite model with llama.cpp (needs `uv sync --extra local-embeddings` and the model file). Each model has its own collection (environment variable) |
+| `OPENROUTER_EMBEDDING_MODEL` | `nvidia/nemotron-3-embed-1b:free` | OpenRouter embedding model (environment variable) |
+| `OPENROUTER_EMBEDDING_BATCH_SIZE` | `64` | Texts per OpenRouter request (environment variable) |
+| `OPENROUTER_TIMEOUT_SECONDS` | `60` | One request's time limit (environment variable) |
+| `OPENROUTER_MAX_RETRIES` | `3` | Retries after a timeout, connection error, 408, 429 or 5xx, with exponential backoff; 400, 401, 402 and 404 are not retried (environment variable) |
 | `EMBEDDING_MAX_INPUT_TOKENS` | `512` | The model's input limit; longer text is truncated |
 | `GENERATION_MODEL` | `gemini-3.5-flash-lite` | Default answer model |
 | `GENERATION_MAX_TOKENS` | `512` | Output limit per answer (environment variable) |
@@ -351,7 +465,7 @@ Every tunable lives in `config/settings.py`.
 | `RETRIEVAL_FETCH_K` | `20` | MMR only: candidates fetched before MMR picks `RETRIEVAL_K` (environment variable) |
 | `RETRIEVAL_LAMBDA_MULT` | `0.5` | MMR only: 1 is pure relevance, 0 is pure diversity (environment variable) |
 | `RETRIEVAL_SCORE_THRESHOLD` | `0.5` | `similarity_score_threshold` only: minimum relevance score (environment variable) |
-| `CHROMA_PERSIST_DIR` | `dbv2/chroma_db` | Vector store location |
+| `CHROMA_PERSIST_DIR` | `dbv2/chroma_db` | Vector store location; one collection per embedding model (`src/embed.py:collection_name`) |
 | `IMAGES_DIR` | `dbv2/images` | Figure files |
 | `PDF_STRATEGY` | `hi_res` | `unstructured` parsing mode |
 | `CHUNK_MAX_CHARACTERS` | `3000` | Largest chunk |
@@ -366,7 +480,7 @@ config/
   settings.py            every tunable and environment variable
   providers.py           LLM providers and models the llm object accepts
 src/
-  embed.py               the one embedding factory (watsonx Granite)
+  embed.py               the one embedding factory (watsonx, OpenRouter, local GGUF) and each model's collection name
   llm.py                 the one chat model factory: catalogue entry -> LangChain client
   documents.py           turns stored chunk metadata back into text, tables, figures
   browse.py              lists the stored documents and a document's chunks in order
@@ -378,6 +492,7 @@ src/
     enrich.py              vision LLM summary per chunk
     export.py              chunks -> JSON export
     pipeline.py            writes the Chroma store
+    reembed.py             copies a collection into another embedding model's collection
   retrieval/
     search.py              loads Chroma, builds the MMR retriever, retrieves
     prompt.py              builds the multimodal prompt, chooses and labels the figures
@@ -399,7 +514,7 @@ app/
   api_client.py          the only place the UI talks to the backend
   rag_eval_dashboard.py  Streamlit viewer for evaluation results
   requirements.txt       the dashboard's packages (used by Streamlit Community Cloud)
-scripts/                 command-line ingestion (scripts/ingest.py)
+scripts/                 command-line ingestion (scripts/ingest.py) and re-embedding (scripts/reembed.py)
 dbv2/                    the built Chroma store and the figure images
 json/                    per-document chunk exports used by the dashboard
 data/                    source PDFs
@@ -426,5 +541,13 @@ pyproject.toml, uv.lock  every dependency, with exact versions (uv sync)
 
 - **`uvicorn` starts the wrong Python.** Some machines have a stale Homebrew `uvicorn`. Activate `.venv` first, or call `.venv/bin/uvicorn`.
 - **A plain `uv sync` removed `mlx-vlm`.** `uv sync` makes the environment match the lock exactly, so it drops extras you did not ask for and packages installed by hand. Use `uv sync --extra local`.
+- **A plain `uv sync` removed the local embedding packages.** Use `uv sync --extra local-embeddings`. Without them, `EMBEDDING_BACKEND=local` fails with `No module named 'llama_cpp'`.
 - **The Docker container cannot authenticate.** A value in `.env` has quotes; `docker run --env-file` keeps them. Remove them.
+- **`/health` says "has no collection for embedding model ...".** The configured model has no collection yet. Build it with `python -m scripts.reembed`, or switch back to a model listed by `python -m scripts.reembed --status`.
+- **`/health` says "Embedding configuration mismatch".** The collection was made by another model than the one configured. Query it with its own model, or build a collection for yours with `python -m scripts.reembed`.
+- **OpenRouter returns 401.** `OPENROUTER_API_KEY` is wrong or expired; keys can carry an expiry date.
+- **OpenRouter returns 402.** The model is a paid one and the account has no credit. Use a `:free` model or buy credit.
+- **OpenRouter returns 404 "No endpoints found matching your data policy".** Allow free endpoints at https://openrouter.ai/settings/privacy, or use a paid model.
+- **OpenRouter returns 429.** The free daily limit (50 requests) is spent; it resets at 00:00 UTC. `--batch-size` lowers the requests a re-embedding needs.
+- **OpenRouter returns 503 "Service is overloaded".** The free endpoint is busy; the client already retried. Try again later or use another model.
 - **`git status` shows changes under `dbv2/chroma_db` you did not make.** Opening the store rewrites them. Run `git checkout -- dbv2/chroma_db`.

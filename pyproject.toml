@@ -31,6 +31,8 @@ dev = [
 ]
 
 [project.optional-dependencies]
+# GGUF Granite embedder for EMBEDDING_BACKEND=local, run by llama.cpp (no torch).
+local-embeddings = ["llama-cpp-python>=0.3"]
 # Local summary model for ingestion (python -m mlx_vlm.server). MLX runs only
 # on Apple silicon, so the marker keeps installs elsewhere working.
 local = ["mlx-vlm>=0.7.12; sys_platform == 'darwin' and platform_machine == 'arm64'"]

@@ -7,3 +7,6 @@ logs/
 *.egg-info/
 last_prompt.txt
 .streamlit/secrets.toml
+
+# Local GGUF embedding models (downloaded, see CONTRIBUTING.md)
+models/

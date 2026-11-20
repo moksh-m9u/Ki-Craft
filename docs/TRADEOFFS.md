@@ -133,24 +133,55 @@ The summarizer is needed only for **new** documents. The existing 270 summaries 
 
 ## 4. Embeddings
 
-**Today:** `ibm/granite-embedding-278m-multilingual` on watsonx.ai (eu-de), 768 dimensions, 512-token input with truncation (`src/embed.py`). It replaced a local 384-dimension Hugging Face model.
+**Today:** three backends behind one factory (`src/embed.py`), chosen by `EMBEDDING_BACKEND`, each model with its own Chroma collection (`src/embed.py:collection_name`), so a query is never compared with another model's vectors:
+
+- `watsonx`: `ibm/granite-embedding-278m-multilingual` on watsonx.ai (eu-de), 768 dimensions, 512-token input with truncation. It built the original store (collection `langchain`) and replaced a local 384-dimension Hugging Face model.
+- `local`: the same Granite model as a GGUF file run by llama.cpp (cosine 0.9999 to the watsonx vectors), for work without watsonx credentials. Host only; not in the API image.
+- `openrouter`: any model on OpenRouter's embeddings API, default `nvidia/nemotron-3-embed-1b:free` (2,048 dimensions), collection `nvidia-nemotron-3-embed-1b`, built from the stored summaries with `python -m scripts.reembed`.
 
 | Option | Strengths | Weaknesses |
 |---|---|---|
-| watsonx Granite 278M (current, chosen) | No model in the API image; small and fast; multilingual | 512-token limit; a network call per query; a cloud account dependency |
-| Local sentence-transformers (bge-small, e5) (not pursued) | No network, free | Brings torch into the image (about 2 GB); CPU latency |
-| OpenAI text-embedding-3, Gemini embedding | Long context (8k tokens), strong quality | Cost; another vendor |
+| watsonx Granite 278M (kept) | No model in the API image; small and fast; multilingual; built the original store | 512-token limit; a cloud account that asks for a credit card |
+| OpenRouter, free Nemotron 3 Embed 1B (chosen as the contributor default, 2026-11-20) | No credit card; no model in the API image; scored at least as well as Granite on our questions (below) | 50 requests a day; a free endpoint can be withdrawn and may log inputs; 2,048 dimensions (above pgvector's 2,000 HNSW limit, but the model can be cut to 1,024); 0.5 s per query |
+| OpenRouter, paid models (bge-m3, text-embedding-3-small, Qwen3) (future option) | No daily cap; about $0.001 to re-embed the corpus | Needs bought credit |
+| Local GGUF Granite (kept, host only) | No network, no account; same vectors as watsonx | About 630 MB of RAM at peak; the image grows to 1.85 GB; killed by the memory limit at 512 MB |
+| Local sentence-transformers or ONNX (not pursued) | No network | Torch in the image (the torch wheel alone is a 539 MB download, plus CUDA libraries) |
 | Domain fine-tuned embedder | Best for part numbers and units | Needs training data we do not have yet |
 
-Changing the embedding model always means re-embedding every chunk, because vectors from different models are not comparable (we saw "expecting 384, got 768"). That is why there is exactly one embedding factory in `src/embed.py`, used by both ingestion and retrieval. Re-embedding is cheap (one API call per chunk); re-summarizing is the expensive step, and the two are independent.
+Changing the embedding model always means new vectors for every chunk, because vectors from different models are not comparable (we saw "expecting 384, got 768"). That is why there is exactly one embedding factory, used by both ingestion and retrieval, and why each model's vectors live in their own collection: switching back is a setting, not a rebuild. Re-embedding is cheap (5 requests for the whole corpus); re-summarizing is the expensive step, and the two are independent.
 
 A known weakness of every dense embedder: part numbers (`LM2596S-5.0`) and exact parameter names are matched poorly. Hybrid search (section 6) addresses this, not a bigger model.
 
-**How to defend it:** "Moving embeddings to a hosted API took torch out of the serving path, so the API container is small and starts fast. I accept a network call per query. The 512-token limit is the real constraint, and I handle it by capping summary length rather than buying a bigger model."
+### API against local embeddings, measured 2026-11-20
+
+Docker images built from this repository on one x86_64 machine (8 CPUs, 15 GiB). RAM is the container's cgroup memory; "Render free" is `--memory=512m --memory-swap=512m --cpus=0.1`.
+
+| | API-only image (watsonx or OpenRouter) | Local GGUF Q8_0 image | Local GGUF Q4_K_M image |
+|---|---|---|---|
+| Image size on disk | 1.17 GB | 1.85 GB | 1.69 GB |
+| Compressed (pulled) | 252 MB | 561 MB | 489 MB |
+| RAM idle, then peak after queries (no limit) | 191 MiB, 228 MB | about 635 MB peak (measured 2026-11-19) | not measured |
+| Under Render free limits | starts in 159 s; first query 10.6 s (loads the store), then 1.6 s; peak 218 MB; not killed | killed (out of memory) on the first query | killed on the first query |
+| Embedding one query (median of 3) | OpenRouter 0.55 s; watsonx not timed alone | 0.22 s on this machine (1 thread) | not measured |
+| `/v1/retrieve`, warm, top_k 5 | OpenRouter 0.45 s on the host, 0.68 s in Docker; watsonx 0.90 s on the host, 0.70 s in Docker | 0.13 s on the host | not measured |
+
+The API-only image still carries packages our code never loads: onnxruntime (78 MB) and kubernetes (118 MB), pulled in by chromadb, and pandas (75 MB), pulled in by ibm-watsonx-ai. They leave with Chroma (section 5).
+
+### Retrieval quality, measured 2026-11-20
+
+18 questions: the 13 in `evals/testing.json` and 5 drafted for this comparison (NE555, LM555, AN699), each labelled only with the document it names. doc-hit@5 is the share of the top 5 chunks from that document; MRR uses the first chunk from it; overlap@5 is the share of Granite's top 5 also returned. These are document-level proxies, not chunk-level recall: that needs the golden set of Checkpoint 5.
+
+| Model | Dimensions | Similarity doc-hit@5 | MMR doc-hit@5 | MRR (both) | Similarity overlap@5 with Granite |
+|---|---|---|---|---|---|
+| Granite (local GGUF, same vectors as watsonx) | 768 | 0.900 | 0.789 | 1.000 | 1.000 |
+| `nvidia/nemotron-3-embed-1b:free` | 2,048 | 0.956 | 0.889 | 1.000 | 0.644 |
+| `nvidia/nemotron-3.5-embed-8b:free` | 4,096 | 0.922 | 0.844 | 1.000 | 0.589 |
+
+**How to defend it:** "Embeddings are an API call, so the API container needs no model and fits a 512 MB server; a GGUF model there runs out of memory. Contributors pick the backend: a free OpenRouter model with no card, watsonx, or the same Granite model locally when documents must stay private. Each model has its own collection, built from the stored summaries in five requests, and the API refuses to search a collection with the wrong model."
 
 **Owner (2026-11-13):** keep watsonx Granite 278M. A local sentence-transformers model is not pursued, because it would put torch back into the API image.
 
-**Status:** keep. Torch and transformers were removed from the image (Checkpoint 1, done).
+**Decided (2026-11-20):** add OpenRouter as an embedding backend so contributors need no credit card; `nvidia/nemotron-3-embed-1b:free` is its default after the comparison above. watsonx stays the default when `EMBEDDING_BACKEND` is unset, and the local GGUF backend stays for host use; the API image stays API-only, with the optional local build kept.
 
 ## 5. Vector store
 

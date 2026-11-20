@@ -1,4 +1,4 @@
-"""Tests for config/settings.py: the LangSmith tracing switch."""
+"""Tests for config/settings.py: the LangSmith tracing switch and the embedding backend choice."""
 
 import importlib
 
@@ -52,3 +52,21 @@ def test_legacy_flag_alone_still_enables(reload_settings):
 def test_tracing_is_off_when_nothing_is_set(reload_settings):
     settings = reload_settings()
     assert settings.LANGSMITH_TRACING is False
+
+
+def test_openrouter_is_an_embedding_backend(reload_settings, monkeypatch):
+    monkeypatch.setenv("EMBEDDING_BACKEND", "openrouter")
+    monkeypatch.delenv("OPENROUTER_EMBEDDING_MODEL", raising=False)
+
+    settings = reload_settings()
+
+    assert settings.EMBEDDING_BACKEND == "openrouter"
+    assert settings.OPENROUTER_EMBEDDING_MODEL == "nvidia/nemotron-3-embed-1b:free"
+    assert settings.OPENROUTER_BASE_URL == "https://openrouter.ai/api/v1"
+
+
+def test_a_misspelt_embedding_backend_stops_startup(reload_settings, monkeypatch):
+    monkeypatch.setenv("EMBEDDING_BACKEND", "openroutr")
+
+    with pytest.raises(ValueError, match="EMBEDDING_BACKEND='openroutr' is not one of: watsonx, local, openrouter"):
+        reload_settings()
