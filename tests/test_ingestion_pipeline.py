@@ -196,6 +196,28 @@ def test_failed_embedding_leaves_the_stored_document_as_it_was(tmp_path, monkeyp
     assert (tmp_path / "img" / "ne555_c2_img0.jpg").exists()
 
 
+def test_store_export_writes_into_the_configured_models_collection(tmp_path, monkeypatch):
+    """With OpenRouter configured, records go to that model's collection; Granite's is untouched."""
+    import chromadb
+
+    import src.embed
+    import src.retrieval.search
+
+    _put(tmp_path, monkeypatch)
+    granite_ids = _records(tmp_path)["ids"]
+    for module in (src.embed, src.retrieval.search):
+        monkeypatch.setattr(module, "EMBEDDING_BACKEND", "openrouter")
+    monkeypatch.setattr(src.embed, "OPENROUTER_EMBEDDING_MODEL", "vendor/model")
+
+    _put(tmp_path, monkeypatch)
+
+    client = chromadb.PersistentClient(path=str(tmp_path / "store"))
+    assert sorted(c.name for c in client.list_collections()) == ["langchain", "vendor-model"]
+    assert client.get_collection("vendor-model").count() == 2
+    assert client.get_collection("vendor-model").metadata["embedding_model"] == "vendor/model"
+    assert _records(tmp_path)["ids"] == granite_ids
+
+
 @pytest.mark.parametrize(
     "broken, message",
     [

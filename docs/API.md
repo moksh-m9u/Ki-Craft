@@ -50,7 +50,7 @@ answer. Every error body has the same shape: `{"detail": "..."}`.
 | `422` | The body is invalid (FastAPI's own check, `detail` is a list of `{type, loc, msg}`; the rejected value is never echoed, so an `llm.api_key` cannot come back in it), or `llm` named a provider or model that is not in the catalogue | `"Model gpt-9 not found for provider openai"` |
 | `500` | Unexpected server error; the real message is only in the server log | `"Internal server error"` |
 | `502` | The model provider failed (bad key, quota, timeout), or it returned no answer text | `"The model provider failed: ..."`, or `"The model used its whole output budget (512 tokens, reasoning included) before writing any answer text. Raise max_tokens and try again."` |
-| `503` | The vector store could not be loaded | `"Vector store unavailable: ..."` |
+| `503` | The vector store could not be loaded: the embedding client failed to start (missing credentials, or `EMBEDDING_BACKEND=local` without llama-cpp-python), or the store has no collection for the configured embedding model, or its collection was made by another model | `"Vector store unavailable: dbv2/chroma_db has no collection for embedding model baai/bge-m3 (EMBEDDING_BACKEND=openrouter). Build it from the stored summaries with: python -m scripts.reembed"` |
 
 `/health` returns 503 with its usual body (`status: "error"` plus `detail`),
 so an uptime probe can rely on the status code alone.

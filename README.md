@@ -13,6 +13,7 @@ It starts where every design starts: the datasheet. Today it answers questions a
 [![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)](https://www.langchain.com/)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-FF6F61?style=for-the-badge&logo=databricks&logoColor=white)](https://www.trychroma.com/)
 [![watsonx](https://img.shields.io/badge/watsonx_Granite-0F62FE?style=for-the-badge&logo=ibm&logoColor=white)](https://www.ibm.com/watsonx)
+[![OpenRouter](https://img.shields.io/badge/OpenRouter_embeddings-6566F1?style=for-the-badge)](https://openrouter.ai/)
 [![Gemini](https://img.shields.io/badge/Gemini_3.5_Flash--Lite-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)](https://ai.google.dev/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io/)
 
@@ -46,6 +47,7 @@ Phase 1 so far: a cleaned-up, explainable codebase, an API with streaming answer
 - **Refuses to guess.** It says when the documents do not state something, keeps units and test conditions, and never mixes values from different parts.
 - **Brings your own model.** Gemini by default; any model from Gemini, OpenAI, Groq or Hugging Face with your own key.
 - **Ingests new PDFs** with a hosted vision model or one that runs locally on a Mac.
+- **Runs without a credit card.** Search uses a free OpenRouter embedding model, IBM watsonx, or a model on your own machine; each model keeps its own index.
 
 Six datasheets and application notes ship ready to query: LM317, LM2596, LM555, NE555, TLV1117 and Microchip AN699.
 
@@ -63,7 +65,7 @@ flowchart TB
         PART["extract.py<br/>unstructured partition_pdf, hi_res"]
         CHUNK["chunk.py<br/>chunk_by_title, max 3000 chars"]
         ENRICH["enrich.py<br/>vision LLM summary per chunk<br/>(GLM-4.5V hosted, or Qwen3.5-4B local)"]
-        BUILD["pipeline.py (scripts/ingest.py)<br/>embed each summary (watsonx Granite, 768 dims),<br/>write figure files"]
+        BUILD["pipeline.py (scripts/ingest.py)<br/>embed each summary (OpenRouter, watsonx<br/>or local Granite), write figure files"]
         PART --> CHUNK --> ENRICH
     end
 
@@ -104,7 +106,47 @@ flowchart TB
 
 ## Getting started
 
-Setup, running the API and the dashboard, ingesting your own PDFs and Docker are covered in [CONTRIBUTING.md](CONTRIBUTING.md).
+You need [uv](https://docs.astral.sh/uv/), a [Gemini key](https://aistudio.google.com/apikey) for answers, and one way to embed questions (below). The six documents are already indexed in the repository.
+
+```bash
+git clone https://github.com/moksh-m9u/Ki-Craft.git && cd Ki-Craft
+uv sync && source .venv/bin/activate
+cp .env.example .env              # fill in GEMINI_API_KEY and OPENROUTER_API_KEY
+python -m pytest -q -p no:cacheprovider
+uvicorn api.main:app --port 8001
+```
+
+Ask a question from a second terminal, or open the dashboard with `API_BASE_URL=http://127.0.0.1:8001 streamlit run app/dashboard.py`:
+
+```bash
+curl -X POST http://127.0.0.1:8001/v1/query -H 'Content-Type: application/json' -d '{"query": "What is the output voltage range of the LM317?"}'
+```
+
+### Choose how to embed
+
+Set `EMBEDDING_BACKEND` in `.env`:
+
+| Backend | Pick it when | You need |
+|---|---|---|
+| `openrouter` (the template's choice) | you want to start in minutes, with no card | a free key from [openrouter.ai](https://openrouter.ai/settings/keys), with free endpoints allowed in its privacy settings; about 45 questions a day on the free tier |
+| `watsonx` (used when unset) | you have an IBM Cloud account | `WATSONX_API_KEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL` |
+| `local` | documents must stay on your machine | `uv sync --extra local-embeddings`, a 303 MB model file and about 630 MB of RAM |
+
+The API backends send your questions to the provider. Each embedding model has its own index; `python -m scripts.reembed --status` shows which one you are using. To use another OpenRouter model, build its index from the stored summaries (5 requests):
+
+```bash
+EMBEDDING_BACKEND=openrouter OPENROUTER_EMBEDDING_MODEL=baai/bge-m3 python -m scripts.reembed
+```
+
+### Docker
+
+The image embeds through OpenRouter or watsonx only: 1.17 GB, and about 230 MB of RAM in use.
+
+```bash
+docker build -t ki-craft-api . && docker run --rm -p 8000:8000 --env-file .env ki-craft-api
+```
+
+Ingesting your own PDFs, every setting and troubleshooting are in [CONTRIBUTING.md](CONTRIBUTING.md); why each part is built the way it is, with the measurements, is in [docs/TRADEOFFS.md](docs/TRADEOFFS.md).
 
 ## Documentation
 

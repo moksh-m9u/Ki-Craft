@@ -1,7 +1,8 @@
 # Runtime dependencies for the FastAPI backend only (installed by the Dockerfile).
 #
-# Embeddings come from the watsonx.ai API and generation from hosted LLMs, so
-# the backend needs no local ML framework. Everything else (ingestion with
+# Embeddings come from the watsonx.ai or OpenRouter API (langchain-ibm,
+# langchain-openai) and generation from hosted LLMs, so the backend needs no
+# local ML framework. Everything else (ingestion with
 # unstructured and OCR, the dashboard, the optional mlx-vlm summariser, the
 # tests) is listed in pyproject.toml and pinned in uv.lock, and stays out of
 # this image. The dashboard's own deploy list is app/requirements.txt.

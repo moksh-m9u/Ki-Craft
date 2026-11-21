@@ -7,7 +7,8 @@ LangChain ``Document`` per chunk with flat metadata: ``source``, ``chunk_id``,
 ``raw_text``, ``tables_html``, ``image_paths``, ``has_table``, ``has_image``.
 
 :func:`store_export` is the one way records reach the store: it checks an
-export, embeds its summaries and writes the records and figure files.
+export, embeds its summaries and writes the records and figure files into
+the configured embedding model's collection (``src/embed.py:collection_name``).
 :func:`run_complete_ingestion_pipeline` turns one PDF into an export and then
 hands it to :func:`store_export`, so a PDF and an existing export are stored
 the same way.
@@ -116,7 +117,8 @@ def store_export(
 ) -> Chroma:
     """Add one chunk export to the store: write its figures, embed its summaries.
 
-    The document's name (``source``) is the export's file name without
+    The records go into the configured embedding model's collection. The
+    document's name (``source``) is the export's file name without
     ``.json``. The steps run in an order that keeps the store whole if one
     fails: the export is checked, every summary is embedded (the network
     call), and only then are the document's old records and figure files
@@ -143,7 +145,7 @@ def store_export(
     _check_export(export, source)
 
     embedding = load_embedding_model()
-    db = load_vector_store(embedding, persist_directory)
+    db = load_vector_store(embedding, persist_directory, create=True)
     old_ids = db.get(where={"source": source}, include=[])["ids"]
     if old_ids and not replace:
         raise FileExistsError(f"{persist_directory} already holds {source}; pass --replace to replace it")

@@ -88,7 +88,7 @@ The owner wants depth here. At each hop, also explain from first principles what
 ```
 config/settings.py      every tunable and environment variable
 config/providers.py     catalogue of LLM providers and models the query llm object accepts
-src/embed.py            the one embedding factory (IBM watsonx Granite, 768 dims)
+src/embed.py            the one embedding factory: EMBEDDING_BACKEND=watsonx (Granite, 768 dims), local (a GGUF build of Granite run by llama.cpp) or openrouter (OPENROUTER_EMBEDDING_MODEL); names each model's Chroma collection
 src/llm.py              the one chat model factory: catalogue entry -> LangChain client; default_llm
 src/ingestion/          offline pipeline: PDF -> elements -> chunks -> summaries -> Chroma
   extract.py              unstructured partition_pdf (hi_res, tables, images); drops headers, footers, logos
@@ -96,8 +96,9 @@ src/ingestion/          offline pipeline: PDF -> elements -> chunks -> summaries
   enrich.py               vision LLM summary per chunk (HF router GLM-4.5V, or local mlx_vlm Qwen3.5-4B)
   export.py               chunks -> JSON export
   pipeline.py             export -> records with figure files; runs the steps and writes Chroma
+  reembed.py              copies a collection into another embedding model's collection (same ids, new vectors)
 src/retrieval/
-  search.py               load Chroma, build the MMR retriever, retrieve
+  search.py               load the model's collection (refuses a missing or mismatched one), build the MMR retriever, retrieve
   prompt.py               build the multimodal prompt, label chunks (C1) and figures (IMG1)
   citations.py            read the finished answer's [C1] and [IMG1] citations and check them
   generate.py             retrieve, stream the answer from the model, count tokens, price, trace
@@ -117,8 +118,8 @@ app/state.py            session state defaults, kept widget values, the loaded d
 app/api_client.py       the only place the UI talks to the backend
 app/rag_eval_dashboard.py  Streamlit viewer for evaluation results
 app/requirements.txt    the packages Streamlit Community Cloud installs for the dashboard
-scripts/                CLI ingestion: PDFs or json/ exports into the store (scripts/ingest.py)
-dbv2/                   the built Chroma store and extracted figure images
+scripts/                CLI ingestion: PDFs or json/ exports into the store (scripts/ingest.py); re-embedding into another model's collection (scripts/reembed.py)
+dbv2/                   the built Chroma store (collections langchain for Granite, nvidia-nemotron-3-embed-1b for OpenRouter) and extracted figure images
 json/                   per-document chunk exports (summaries included) used to build dbv2
 evals/                  evaluation questions and notes
 tests/                  pytest suite (no network)
@@ -128,9 +129,9 @@ Data flow at a glance:
 
 ```
 Ingestion (offline):  PDF -> partition_pdf -> chunk_by_title -> vision summary per chunk
-                      -> embed summary (watsonx) -> Chroma (summary as page_content,
+                      -> embed summary (EMBEDDING_BACKEND) -> the model's Chroma collection (summary as page_content,
                       raw_text/tables_html/image_paths as metadata) + images on disk
-Query (online):       question -> embed -> Chroma MMR (k=5 of 20) -> rebuild text,
+Query (online):       question -> embed (same model) -> Chroma MMR (k=5 of 20) -> rebuild text,
                       tables, images from metadata -> multimodal prompt -> Gemini -> answer
 ```
 
@@ -162,6 +163,10 @@ python -m scripts.ingest path/to/document.pdf
 python -m scripts.ingest data/ --backend local
 ```
 
+```bash
+python -m scripts.reembed --status
+```
+
 Notes:
 
 - Tests must not call the network. Mock external clients (see `tests/test_embed.py`).
@@ -171,7 +176,7 @@ Notes:
 
 ## Environment variables
 
-`GEMINI_API_KEY`, `HF_TOKEN`, `WATSONX_API_KEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL`, `API_BASE_URL`, `CORS_ALLOWED_ORIGINS`, `GENERATION_MAX_TOKENS`, and the LangSmith variables (`LANGSMITH_API_KEY`, `LANGSMITH_TRACING`, `LANGSMITH_PROJECT`). See `config/settings.py` for defaults. `LANGSMITH_TRACING` is the one tracing switch: when it is unset the legacy `LANGCHAIN_TRACING_V2` is used, and `config/settings.py` writes the result to `LANGSMITH_TRACING_V2`, which the langsmith library checks first.
+`GEMINI_API_KEY`, `HF_TOKEN`, `EMBEDDING_BACKEND` (`watsonx`, `local` with `LOCAL_EMBEDDING_GGUF_PATH` and `LOCAL_EMBEDDING_THREADS`, or `openrouter` with `OPENROUTER_API_KEY`, `OPENROUTER_EMBEDDING_MODEL`, `OPENROUTER_EMBEDDING_BATCH_SIZE`, `OPENROUTER_TIMEOUT_SECONDS` and `OPENROUTER_MAX_RETRIES`), `WATSONX_API_KEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL`, `API_BASE_URL`, `CORS_ALLOWED_ORIGINS`, `GENERATION_MAX_TOKENS`, and the LangSmith variables (`LANGSMITH_API_KEY`, `LANGSMITH_TRACING`, `LANGSMITH_PROJECT`). See `config/settings.py` for defaults. `LANGSMITH_TRACING` is the one tracing switch: when it is unset the legacy `LANGCHAIN_TRACING_V2` is used, and `config/settings.py` writes the result to `LANGSMITH_TRACING_V2`, which the langsmith library checks first.
 
 Ingestion summaries: `ENHANCEMENT_BACKEND` (`huggingface` or `local`) and the `ENHANCEMENT_*` and `LOCAL_ENHANCEMENT_*` tunables; see the ingestion section of `CONTRIBUTING.md`.
 
@@ -204,6 +209,7 @@ Recorded so no agent re-opens them. Dates are when the owner decided.
 - 2026-11-13: **Working style.** Keep the checkpoint order (changed once, on 2026-11-21: Checkpoint 6 before 5). There is no fixed deadline; understanding comes before speed. For the evaluation set, the agent drafts questions with expected answers and pages, and the owner reviews every one.
 - A chosen option is not frozen. When working on an area, give your own opinion and ask if you see a better path, then proceed with the chosen option unless the owner changes it.
 - Auth is deferred to a later phase.
+- 2026-11-20: **OpenRouter embeddings, one collection per model.** Contributors without a credit card embed through OpenRouter (`EMBEDDING_BACKEND=openrouter`); watsonx Granite stays the default when the variable is unset, and the local GGUF Granite backend stays for host use. Granite is not on OpenRouter, so each embedding model has its own Chroma collection, named by `src/embed.py:collection_name` (`langchain` stays Granite's) and recording its model in its metadata; the API refuses a missing or mismatched collection with 503 instead of searching it. A new model's collection is built from the stored summaries with `python -m scripts.reembed`, which keeps record ids (so figure URLs work with any collection) and makes the copy visible only after it matches the source. The default OpenRouter model, `nvidia/nemotron-3-embed-1b:free`, was chosen after a comparison with Granite (`docs/TRADEOFFS.md`, section 4). The API image stays API-only and the optional local build arg stays.
 
 ## Checkpoints for the current phase
 

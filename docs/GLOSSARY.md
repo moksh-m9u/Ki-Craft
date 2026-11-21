@@ -4,9 +4,27 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 ## Retrieval and embeddings
 
-**Embedding.** A list of numbers (here 768) that represents the meaning of a piece of text. Texts with similar meaning get vectors that point in similar directions. Here: `src/embed.py`, watsonx Granite.
+**Embedding.** A list of numbers that represents the meaning of a piece of text: 768 for Granite, 2,048 for the default OpenRouter model. Texts with similar meaning get vectors that point in similar directions. Here: `src/embed.py`.
 
 **Cosine similarity.** How close two embeddings are, measured by the angle between them: 1 means the same direction, 0 means unrelated. Chroma and pgvector both rank chunks by it here.
+
+**Vector space.** The set of positions one embedding model puts texts in. Only vectors from the same model share a space, so distances between vectors from different models mean nothing, even when both have 768 numbers. A query must be embedded by the model that built the vectors it is compared with; that is why the local backend uses the open weights of the same Granite model, and why each model gets its own collection. Here: `src/embed.py`.
+
+**Collection.** A named set of records inside one Chroma store, with its own vectors and its own index; a store can hold several. Here each embedding model has one: `langchain` for Granite (the original), `nvidia-nemotron-3-embed-1b` for the default OpenRouter model. The settings pick the collection (`src/embed.py:collection_name`), each collection records the model that made it (`embedding_model` in its metadata), and the API refuses to search one with another model (`src/retrieval/search.py:load_vector_store`).
+
+**Re-embedding.** Computing new vectors for texts that are already stored, with another embedding model, and writing them under the same record ids into that model's collection. The summaries are not written again, so it costs one embedding call per batch, not a vision model call per chunk. Here: `python -m scripts.reembed` (`src/ingestion/reembed.py`).
+
+**OpenRouter.** A service that sells access to many model providers through one API key and one OpenAI-compatible API, including an embeddings endpoint (`/api/v1/embeddings`). Here it is one embedding backend (`EMBEDDING_BACKEND=openrouter`); the model is any id listed at `https://openrouter.ai/api/v1/embeddings/models`.
+
+**Free model (`:free`).** An OpenRouter model id ending in `:free` costs nothing and needs no credit, but is limited to 20 requests a minute and 50 a day (1,000 a day once an account has bought $10 of credit), can be withdrawn, and its provider may log what it is sent. The same model without the suffix is the paid tier and gives the same vectors, so both share one collection.
+
+**Matryoshka embedding.** An embedding trained so that its first numbers already carry most of the meaning, so the vector can be cut short (for example from 2,048 to 1,024 numbers, then normalised again) and still work for search. It matters here because pgvector's HNSW index takes at most 2,000 dimensions.
+
+**Normalization.** Scaling an embedding so its length is 1. After that, cosine similarity and the dot product give the same ranking. The stored vectors already have length 1, and the local embedding backend produces unit-length vectors too (`normalize=True`, `src/embed.py`).
+
+**GGUF.** A single-file format for model weights, read by llama.cpp, a C++ runtime that runs models on a CPU without torch. Here: the local embedding backend loads a GGUF build of the Granite embedder (`src/embed.py`).
+
+**Quantization.** Storing model weights with fewer bits (for example 8 or 4 instead of 16) to make the file and its memory smaller, at the cost of slightly different outputs. Q8_0 keeps 8 bits per weight; Q4_K_M about 4.5. Here: Q8_0 matches the stored vectors at cosine 0.9999, Q4_K_M at 0.991 or better.
 
 **Vector store.** A database that stores embeddings and finds the nearest ones to a query embedding. Here: Chroma today, Postgres with pgvector after Checkpoint 6.
 
