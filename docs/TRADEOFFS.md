@@ -480,11 +480,11 @@ Metrics:
 - answer correctness (an exact value match for numeric specs, LLM-judged for prose);
 - the rate of correct "not stated in the document" refusals.
 
-The evaluation set is also what proves the Postgres migration changed nothing.
+The Postgres migration does not need it: the migration copies the same embeddings under the same record ids, so it is checked by comparing the record ids pgvector and Chroma return for the same questions, which is stricter than a hit rate (decided 2026-11-21).
 
-**How to defend it:** "Every retrieval change (chunk size, embedding model, hybrid search, cache threshold, a database swap) is a trade-off I can only claim with numbers, so I built the evaluation set before optimising."
+**How to defend it:** "Every retrieval change (chunk size, embedding model, hybrid search, cache threshold) is a trade-off I can only claim with numbers, so I built the evaluation set before optimising. A database swap that should change nothing is checked by comparing results directly."
 
-**Status:** Checkpoint 5, before the migration.
+**Status:** Checkpoint 5, after the migration (Checkpoint 6) and before hybrid search.
 
 ## 15. Agent frameworks (LangGraph and others)
 

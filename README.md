@@ -37,7 +37,7 @@ It starts where every design starts: the datasheet. Today it answers questions a
 | 2. Schematic review | Check a KiCad schematic against the datasheets of its parts: pins, feedback dividers, decoupling | `░░░░░░░░░░` planned |
 | 3. Design agent | Draft schematics in KiCad from requirements, and assist with placement and layout | `░░░░░░░░░░` planned |
 
-Phase 1 so far: a cleaned-up, explainable codebase, an API with streaming answers and labelled figure citations, and a pipeline that ingests any PDF. Next: an evaluation set that measures accuracy, Postgres with hybrid search, uploading your own PDFs through the API with page-level citations, and a hosted demo.
+Phase 1 so far: a cleaned-up, explainable codebase, an API with streaming answers and labelled figure citations, and a pipeline that ingests any PDF. Next: Postgres, an evaluation set that measures accuracy, hybrid search, uploading your own PDFs through the API with page-level citations, and a hosted demo.
 
 ## What it does today
 

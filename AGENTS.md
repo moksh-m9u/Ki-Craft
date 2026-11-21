@@ -200,7 +200,8 @@ Recorded so no agent re-opens them. Dates are when the owner decided.
   - frontend: React with TypeScript in a later phase; Next.js or Vite decided then;
   - database host: Railway Postgres, tentatively; hosting overall still to discuss.
 - 2026-11-13: **First upload target is datasheets.** Privacy (local mode) is a later add-on. The demo user is a mix of student and working engineer.
-- 2026-11-13: **Working style.** Keep the checkpoint order. There is no fixed deadline; understanding comes before speed. For the evaluation set, the agent drafts questions with expected answers and pages, and the owner reviews every one.
+- 2026-11-21: **Postgres before the evaluation baseline.** Checkpoint 6 runs before Checkpoint 5; the numbers stay as they are because docs and commits refer to them. The migration copies the same embeddings under the same record ids, so it needs a check that pgvector returns what Chroma returns, not a measure of quality: about 50 real questions, comparing the record ids of the 20 nearest chunks and of the final 5 after MMR. The golden set refers to record ids, which the migration keeps, so it is built on Postgres afterwards and still comes before any change meant to alter results (hybrid search, re-ranking, chunking, a new summarizer or embedding model, the cache).
+- 2026-11-13: **Working style.** Keep the checkpoint order (changed once, on 2026-11-21: Checkpoint 6 before 5). There is no fixed deadline; understanding comes before speed. For the evaluation set, the agent drafts questions with expected answers and pages, and the owner reviews every one.
 - A chosen option is not frozen. When working on an area, give your own opinion and ask if you see a better path, then proceed with the chosen option unless the owner changes it.
 - Auth is deferred to a later phase.
 
@@ -269,17 +270,17 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 - Cleanup, 2026-11-20, after a scan of the whole repository found no function without a caller but several duplicates. Ingestion has one write path: a PDF becomes an export and is stored by `src/ingestion/pipeline.py:store_export`, like an existing export, so it gets the same checks and refuses a document already stored; `create_vector_store` is deleted, and the store is opened only by `src/retrieval/search.py:load_vector_store`. The dashboard draws a chunk's content with one function, `app/components/chunk_view.py:render_content_tabs`, on the Explorer, Compare and Query pages, and the Explorer and Analytics pages share one per-chunk table (`build_chunk_df`) and one totals row (`components/dataset.py:render_totals`). `tests/test_api.py` is split into `tests/api/`, one file per router, with the fakes in `fakes.py` and the fixtures in `conftest.py`. `src/logger.py` lost its unused options (81 lines to 42), and `scripts/ingest.py` its `sys.path` line, since it runs as `python -m scripts.ingest`.
 - Send the sidebar's Max Images in default mode too. Found 2026-11-15: without a custom provider the dashboard calls `/query/stream` with `top_k` only (`app/dashboard.py`, `api_stream(...)`), so the Max Images input is ignored and the server default `GENERATION_MAX_IMAGES` (3) applies. Only custom-provider mode sends it. Done 2026-11-16 in the POST stream migration: default mode passes `max_images` (`app/dashboard.py`, `api_stream(...)`); on 2026-11-19 the request body was captured and carries the sidebar value, 0 included.
 
-**Checkpoint 5. Evaluation baseline.**
-- Turn `evals/testing.json` into a small golden set covering text, table, figure, and "not stated" questions per document. The agent drafts each question with its expected answer and page; the owner reviews every one.
-- One script reports retrieval hit rate and answer correctness.
-- Record the baseline in `docs/TRADEOFFS.md` so later changes (chunking, embeddings, cache, the Postgres migration) are measured, not guessed.
-
-**Checkpoint 6. Postgres + pgvector.** Host: Railway Postgres, tentatively; confirm before starting.
+**Checkpoint 6. Postgres + pgvector.** Runs before Checkpoint 5 (decided 2026-11-21). Host: Railway Postgres, tentatively; confirm before starting.
 - Schema for documents, chunks (with `vector(768)`), images, queries, retrievals, answers, and feedback, with Alembic migrations.
 - A one-off script copies ids, summaries, embeddings, and metadata out of Chroma into Postgres. No summarizer and no re-embedding.
 - Each Chroma record id becomes the chunk's primary key, stored as the Postgres `uuid` type, unchanged. Figure URLs (`/v1/images/{record_id}/{position}`) contain this id, so generating new ids would break every figure link a client holds.
-- Swap the retriever to pgvector and confirm the evaluation numbers match Chroma's.
+- Swap the retriever to pgvector and check it returns what Chroma returns: for about 50 real questions, the same record ids among the 20 nearest chunks and the same final 5 after MMR.
 - Remove Chroma once they match.
+
+**Checkpoint 5. Evaluation baseline.** Runs after Checkpoint 6, on Postgres.
+- Turn `evals/testing.json` into a small golden set covering text, table, figure, and "not stated" questions per document. The agent drafts each question with its expected answer and page; the owner reviews every one.
+- One script reports retrieval hit rate and answer correctness.
+- Record the baseline in `docs/TRADEOFFS.md` so later changes (chunking, embeddings, hybrid search, cache) are measured, not guessed.
 
 **Checkpoint 7. Upload and ingest through the API.** This is the product goal of the phase.
 - Keep each element's page number and bounding box from `unstructured` (`metadata.page_number`, `metadata.coordinates`) on the chunk. Highlighted citations depend on this, and it cannot be recovered later without re-extracting.
