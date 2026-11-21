@@ -1,0 +1,1769 @@
+{
+  "version": 1,
+  "status": "draft: every question needs the owner's review before it counts",
+  "how_to_read": {
+    "type": "text, table, figure or not_stated: where the answer lives in the PDF",
+    "pages": "PDF page numbers of data/<document>.pdf where the answer is printed",
+    "relevant_record_ids": "store record ids whose chunk holds the answer; retrieval is a hit when any is retrieved. The first is the best one",
+    "relevant_chunk_ids": "the same chunks by stored chunk_id, for reading in the Explorer; record ids are what the script checks",
+    "key_facts": "values a correct answer must contain (the script will normalise units and spacing); empty for not_stated",
+    "reviewed": "false until the owner has checked the question, answer, pages and chunks"
+  },
+  "questions": [
+    {
+      "id": "lm317-01",
+      "document": "lm317",
+      "type": "text",
+      "question": "What output voltage range and output current does the LM317 support?",
+      "expected_answer": "An adjustable output from 1.25 V to 37 V, and more than 1.5 A of output current (1.5 A in the recommended operating conditions).",
+      "key_facts": [
+        "1.25 V",
+        "37 V",
+        "1.5 A"
+      ],
+      "pages": [
+        1,
+        13
+      ],
+      "relevant_record_ids": [
+        "13e95b0b-8abf-423f-99f2-64f952aed28a",
+        "50452f05-228b-49df-9f03-e8d6f2874b14"
+      ],
+      "relevant_chunk_ids": [
+        1,
+        16
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "lm317-02",
+      "document": "lm317",
+      "type": "text",
+      "question": "How much input-to-output headroom does the LM317 need to stay in regulation, and what happens with less?",
+      "expected_answer": "Up to 3 V of headroom (VI - VO). With less, the device can drop out and the output becomes the input voltage minus the dropout voltage.",
+      "key_facts": [
+        "3 V"
+      ],
+      "pages": [
+        13,
+        14
+      ],
+      "relevant_record_ids": [
+        "3b545e9a-a558-4507-8a7b-4c886cdaa5e7",
+        "a1f4eefe-8471-49ed-96ce-7b2e826a7ffd"
+      ],
+      "relevant_chunk_ids": [
+        17,
+        18
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "lm317-03",
+      "document": "lm317",
+      "type": "text",
+      "question": "When does the LM317 need an input bypass capacitor, and how large should it be?",
+      "expected_answer": "When the device is more than six inches from the input filter capacitors. Any type works for stability, and it should be 0.1 uF or greater.",
+      "key_facts": [
+        "6 inches",
+        "0.1 uF"
+      ],
+      "pages": [
+        1,
+        23
+      ],
+      "relevant_record_ids": [
+        "e966203d-ad15-4481-bbb1-615433908c26",
+        "13e95b0b-8abf-423f-99f2-64f952aed28a",
+        "d699808a-a584-4edf-9c6b-572be06fc575"
+      ],
+      "relevant_chunk_ids": [
+        29,
+        1,
+        2
+      ],
+      "notes": "Chunk 29 has both conditions; chunks 1 and 2 give the six inches but not the size.",
+      "reviewed": false
+    },
+    {
+      "id": "lm317-04",
+      "document": "lm317",
+      "type": "text",
+      "question": "In the slow turn-on 15 V regulator circuit, what voltage does the output start at, and why?",
+      "expected_answer": "1.9 V: the capacitor C1 starts uncharged, so VOUT = VC1 + VBE + 1.25 V = 0 V + 0.65 V + 1.25 V. VOUT then rises with the capacitor voltage until the PNP turns off.",
+      "key_facts": [
+        "1.9 V",
+        "0.65 V",
+        "1.25 V"
+      ],
+      "pages": [
+        20
+      ],
+      "relevant_record_ids": [
+        "485a040e-79b3-4872-a657-93ba3419217f"
+      ],
+      "relevant_chunk_ids": [
+        26
+      ],
+      "notes": "The circuit's figure (Figure 8-13) was not captured at ingestion; chunk 26 has no image.",
+      "reviewed": false
+    },
+    {
+      "id": "lm317-05",
+      "document": "lm317",
+      "type": "text",
+      "question": "In the 50 mA constant-current battery charger, what sets the charge current and what input voltage does it need?",
+      "expected_answer": "ICHG = 1.25 V / 24 ohm, about 52 mA (the circuit is named 50 mA). VI must be greater than VBAT + 4.25 V (1.25 V reference plus 3 V headroom).",
+      "key_facts": [
+        "24",
+        "4.25 V"
+      ],
+      "pages": [
+        20
+      ],
+      "relevant_record_ids": [
+        "d7f3dd8a-47b5-4798-bd32-950b632cba67"
+      ],
+      "relevant_chunk_ids": [
+        25
+      ],
+      "notes": "Ingestion trap: chunk 25's stored text reads the resistor as '240' (OCR error). An answer with 240 ohm or about 5 mA shows the error reached the answer.",
+      "reviewed": false
+    },
+    {
+      "id": "lm317-06",
+      "document": "lm317",
+      "type": "table",
+      "question": "What are the LM317's recommended operating conditions?",
+      "expected_answer": "Output voltage 1.25 V to 37 V; input-to-output differential 3 V to 40 V; output current 0.01 A to 1.5 A; operating virtual junction temperature 0 C to 125 C.",
+      "key_facts": [
+        "1.25",
+        "37",
+        "3",
+        "40",
+        "0.01",
+        "1.5",
+        "125"
+      ],
+      "pages": [
+        6
+      ],
+      "relevant_record_ids": [
+        "c9165210-c561-4e53-84d8-82800a8b1b37"
+      ],
+      "relevant_chunk_ids": [
+        8
+      ],
+      "notes": "Section 6.3 sits in the ESD ratings chunk (8), not in the absolute maximum ratings chunk (7).",
+      "reviewed": false
+    },
+    {
+      "id": "lm317-07",
+      "document": "lm317",
+      "type": "table",
+      "question": "What is the junction-to-ambient thermal resistance of the new-chip LM317 in the SOT-223 and TO-263 packages?",
+      "expected_answer": "59.6 C/W for SOT-223 (DCY) and 41.0 C/W for TO-263 (KTT).",
+      "key_facts": [
+        "59.6",
+        "41.0"
+      ],
+      "pages": [
+        7
+      ],
+      "relevant_record_ids": [
+        "e3fdb0b0-69c7-4115-aed1-fbb88630b77c"
+      ],
+      "relevant_chunk_ids": [
+        10
+      ],
+      "notes": "Trap: the legacy-chip table (chunk 9) gives 66.8 and 38.0 for the same packages.",
+      "reviewed": false
+    },
+    {
+      "id": "lm317-08",
+      "document": "lm317",
+      "type": "table",
+      "question": "What minimum load current does the LM317 need to stay in regulation?",
+      "expected_answer": "3.5 mA typical and 10 mA maximum, at VIN - VOUT = 40 V over the full operating temperature range.",
+      "key_facts": [
+        "3.5 mA",
+        "10 mA",
+        "40 V"
+      ],
+      "pages": [
+        8,
+        14
+      ],
+      "relevant_record_ids": [
+        "a6f31c9d-63de-47b9-a416-851e5638b5ac"
+      ],
+      "relevant_chunk_ids": [
+        11
+      ],
+      "notes": "Section 7.4.3 (chunk 18) points to the table without a value.",
+      "reviewed": false
+    },
+    {
+      "id": "lm317-09",
+      "document": "lm317",
+      "type": "table",
+      "question": "What ripple rejection does the new-chip LM317 achieve at 120 Hz with a 10 uF adjust-pin capacitor?",
+      "expected_answer": "66 dB minimum, 80 dB typical, at VOUT = 10 V, f = 120 Hz, CADJ = 10 uF, over the full operating temperature range. Without CADJ it is 65 dB typical.",
+      "key_facts": [
+        "66",
+        "80 dB",
+        "120 Hz",
+        "10 uF"
+      ],
+      "pages": [
+        1,
+        8
+      ],
+      "relevant_record_ids": [
+        "a6f31c9d-63de-47b9-a416-851e5638b5ac",
+        "13e95b0b-8abf-423f-99f2-64f952aed28a"
+      ],
+      "relevant_chunk_ids": [
+        11,
+        1
+      ],
+      "notes": "Page 1 states 80 dB at 120 Hz for CADJ = 10 uF (new chip) in the features list.",
+      "reviewed": false
+    },
+    {
+      "id": "lm317-10",
+      "document": "lm317",
+      "type": "figure",
+      "question": "In the typical application circuit on the first page, what are the component values?",
+      "expected_answer": "R1 = 240 ohm (OUTPUT to ADJ), R2 = 5 kohm adjustable (ADJ to GND), C1 = 0.1 uF on the input (needed if more than 6 inches from the filter capacitors), C2 = 1 uF on the output (optional, improves transient response), with VIN >= 28 V.",
+      "key_facts": [
+        "240",
+        "5 k",
+        "0.1 uF",
+        "1 uF"
+      ],
+      "pages": [
+        1
+      ],
+      "relevant_record_ids": [
+        "d699808a-a584-4edf-9c6b-572be06fc575",
+        "13e95b0b-8abf-423f-99f2-64f952aed28a"
+      ],
+      "relevant_chunk_ids": [
+        2,
+        1
+      ],
+      "notes": "Values are only in the figure (dbv2/images/lm317_c2_img0.jpg); the page text has them only partly and out of order.",
+      "reviewed": false
+    },
+    {
+      "id": "lm317-11",
+      "document": "lm317",
+      "type": "figure",
+      "question": "What is the pinout of the LM317 in the 4-pin SOT-223 (DCY) package?",
+      "expected_answer": "Pin 1 ADJUST, pin 2 OUTPUT, pin 3 INPUT, and pin 4 (the tab) OUTPUT.",
+      "key_facts": [
+        "ADJUST",
+        "OUTPUT",
+        "INPUT"
+      ],
+      "pages": [
+        5
+      ],
+      "relevant_record_ids": [
+        "453336c0-55d0-48e0-9b7d-c27a61ae3dad"
+      ],
+      "relevant_chunk_ids": [
+        6
+      ],
+      "notes": "Ingestion trap: chunk 6's stored table reads ADJUST as pin '1 4 1' (OCR). The figure (lm317_c6_img0.jpg) is clear.",
+      "reviewed": false
+    },
+    {
+      "id": "lm317-12",
+      "document": "lm317",
+      "type": "figure",
+      "question": "How does the new-chip LM317's reference voltage change with temperature?",
+      "expected_answer": "It peaks at about 1.250 V near 25 C, is about 1.245 V at -55 C, and falls to about 1.232 V at 150 C (Figure 6-19).",
+      "key_facts": [
+        "1.25"
+      ],
+      "pages": [
+        12
+      ],
+      "relevant_record_ids": [
+        "773ce2fa-7d72-4681-b53e-48e0d703b471"
+      ],
+      "relevant_chunk_ids": [
+        15
+      ],
+      "notes": "Values are read from a graph, so accept about +/- 0.003 V. Same image as Figure 6-20 (quiescent current), 6-21 and 6-22.",
+      "reviewed": false
+    },
+    {
+      "id": "lm317-13",
+      "document": "lm317",
+      "type": "figure",
+      "question": "How does copper area on the PCB affect the TO-263 package's junction-to-ambient thermal resistance?",
+      "expected_answer": "It drops from about 74 C/W with almost no copper to about 35 C/W at 1 square inch; beyond 1 square inch there is very little improvement. The minimum on a PCB is 32 C/W (1 oz copper).",
+      "key_facts": [
+        "1 square inch",
+        "32"
+      ],
+      "pages": [
+        25
+      ],
+      "relevant_record_ids": [
+        "f2a67caa-9333-47bf-bb32-3c4c390d2392"
+      ],
+      "relevant_chunk_ids": [
+        32
+      ],
+      "notes": "Figure 8-21 (lm317_c32_img0.jpg) plus the text below it.",
+      "reviewed": false
+    },
+    {
+      "id": "lm317-14",
+      "document": "lm317",
+      "type": "not_stated",
+      "question": "What is the LM317's built-in soft-start time?",
+      "expected_answer": "Not stated: the LM317 has no built-in soft-start. The datasheet only shows an external slow turn-on circuit (Figure 8-13) with no time given.",
+      "key_facts": [],
+      "pages": [
+        20
+      ],
+      "relevant_record_ids": [
+        "485a040e-79b3-4872-a657-93ba3419217f"
+      ],
+      "relevant_chunk_ids": [
+        26
+      ],
+      "notes": "A good answer may mention the external slow turn-on circuit but must not invent a time. Cross-document trap: the TLV1117 fixed version does have an internal soft-start.",
+      "reviewed": false
+    },
+    {
+      "id": "lm317-15",
+      "document": "lm317",
+      "type": "not_stated",
+      "question": "What is the LM317's RMS output noise from 10 Hz to 100 kHz?",
+      "expected_answer": "Not stated for that bandwidth. The datasheet gives 0.003 % of VOUT typical for 10 Hz to 10 kHz only.",
+      "key_facts": [],
+      "pages": [
+        8
+      ],
+      "relevant_record_ids": [
+        "a6f31c9d-63de-47b9-a416-851e5638b5ac"
+      ],
+      "relevant_chunk_ids": [
+        11
+      ],
+      "notes": "Fails if it presents the 10 kHz figure as the 100 kHz one, or converts it to uV without saying so.",
+      "reviewed": false
+    },
+    {
+      "id": "lm317-16",
+      "document": "lm317",
+      "type": "not_stated",
+      "question": "At what junction temperature does the LM317's thermal shutdown trip?",
+      "expected_answer": "Not stated. The datasheet says the device has internal thermal shutdown and gives a rated maximum junction temperature of 125 C (new chip), but no trip temperature.",
+      "key_facts": [],
+      "pages": [
+        23
+      ],
+      "relevant_record_ids": [
+        "8bcfe678-594d-4dbe-ae0a-ba7125a36356"
+      ],
+      "relevant_chunk_ids": [
+        30
+      ],
+      "notes": "Cross-document trap: the TLV1117 datasheet gives 180 C shutdown and 160 C reset (new chip, fixed output); using them for the LM317 is a failure. Quoting 125 C as the trip point is also a failure: that is the rated maximum.",
+      "reviewed": false
+    },
+    {
+      "id": "tlv1117-01",
+      "document": "tlv1117",
+      "type": "text",
+      "question": "What input voltage range, output current and output voltage options does the TLV1117 offer?",
+      "expected_answer": "Input 2.7 V to 15 V, up to 800 mA of output current, fixed outputs from 1.5 V to 5 V, and an adjustable output from 1.25 V to 13.8 V.",
+      "key_facts": [
+        "2.7 V",
+        "15 V",
+        "800 mA",
+        "1.25 V",
+        "13.8 V"
+      ],
+      "pages": [
+        1
+      ],
+      "relevant_record_ids": [
+        "bef57012-a607-4300-b4d9-44c1a4d60abb"
+      ],
+      "relevant_chunk_ids": [
+        1
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "tlv1117-02",
+      "document": "tlv1117",
+      "type": "text",
+      "question": "Does the TLV1117 need a minimum load current?",
+      "expected_answer": "The adjustable version needs at least 1.7 mA of load current for stable operation (1.7 mA typical, 5 mA maximum at VIN = 15 V). The fixed version (new chip) has no minimum load requirement.",
+      "key_facts": [
+        "1.7 mA"
+      ],
+      "pages": [
+        1,
+        8
+      ],
+      "relevant_record_ids": [
+        "bef57012-a607-4300-b4d9-44c1a4d60abb",
+        "05a292ad-0f41-4553-9da3-099200c82d30"
+      ],
+      "relevant_chunk_ids": [
+        1,
+        11
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "tlv1117-03",
+      "document": "tlv1117",
+      "type": "text",
+      "question": "How does the TLV1117's foldback current limit work?",
+      "expected_answer": "It is a hybrid brick-wall and foldback limit (fixed output, new chip). Above VFOLDBACK = 50% of VOUT(nom), the output current is held at the current limit ICL. Below it, the limit folds back towards the short-circuit current ISC as the output approaches ground. If thermal shutdown triggers, the device cycles between current limit and thermal shutdown.",
+      "key_facts": [
+        "50%",
+        "ICL",
+        "ISC"
+      ],
+      "pages": [
+        19
+      ],
+      "relevant_record_ids": [
+        "496b1bda-c1ae-456e-91cd-06a5021a6036"
+      ],
+      "relevant_chunk_ids": [
+        22
+      ],
+      "notes": "The figure (tlv1117_c22_img0.jpg) shows the same shape.",
+      "reviewed": false
+    },
+    {
+      "id": "tlv1117-04",
+      "document": "tlv1117",
+      "type": "text",
+      "question": "Does the adjustable TLV1117 need protection diodes?",
+      "expected_answer": "Not in normal operation: the ADJ pin withstands a +/-25 V transient relative to the output, and the internal output-to-input diode handles microsecond surges of 10 A to 20 A. With a very large output capacitor (1000 uF or more) and the input shorted to ground, add an external diode from output to input.",
+      "key_facts": [
+        "25 V",
+        "10 A",
+        "1000"
+      ],
+      "pages": [
+        21,
+        22
+      ],
+      "relevant_record_ids": [
+        "85e3107b-4596-4da2-b3a2-2fbd002bb00f"
+      ],
+      "relevant_chunk_ids": [
+        29
+      ],
+      "notes": "Ingestion trap: chunk 29 stores '>= 1000 uF' as '21000uUF' (OCR).",
+      "reviewed": false
+    },
+    {
+      "id": "tlv1117-05",
+      "document": "tlv1117",
+      "type": "table",
+      "question": "What is the TLV1117's dropout voltage at 800 mA?",
+      "expected_answer": "New chip, fixed output: 0.8 V typical, 1.2 V maximum. Otherwise (legacy and adjustable): 1.2 V typical, 1.3 V maximum (C version) or 1.4 V maximum (I version).",
+      "key_facts": [
+        "0.8",
+        "1.2"
+      ],
+      "pages": [
+        8
+      ],
+      "relevant_record_ids": [
+        "05a292ad-0f41-4553-9da3-099200c82d30"
+      ],
+      "relevant_chunk_ids": [
+        11
+      ],
+      "notes": "Two rows for the same parameter; an answer must say which chip each value belongs to.",
+      "reviewed": false
+    },
+    {
+      "id": "tlv1117-06",
+      "document": "tlv1117",
+      "type": "table",
+      "question": "At what temperature does the TLV1117's thermal shutdown trip and reset?",
+      "expected_answer": "Shutdown at 180 C (temperature increasing) and reset at 160 C (temperature falling), for the new chip with fixed output.",
+      "key_facts": [
+        "180",
+        "160"
+      ],
+      "pages": [
+        8
+      ],
+      "relevant_record_ids": [
+        "05a292ad-0f41-4553-9da3-099200c82d30",
+        "5730ed30-0387-43ba-b65e-5b02172fabb1"
+      ],
+      "relevant_chunk_ids": [
+        11,
+        12
+      ],
+      "notes": "The two values are split across chunks 11 and 12.",
+      "reviewed": false
+    },
+    {
+      "id": "tlv1117-07",
+      "document": "tlv1117",
+      "type": "table",
+      "question": "What is the TLV1117's quiescent current?",
+      "expected_answer": "New chip, fixed output: 65 uA typical, 110 uA maximum (IOUT = 0 mA, VIN = 15 V); page 1 rounds the typical to 60 uA. Adjustable output: 5 mA typical, 10 mA maximum (C) or 15 mA maximum (I).",
+      "key_facts": [
+        "65",
+        "110",
+        "5 mA"
+      ],
+      "pages": [
+        1,
+        8
+      ],
+      "relevant_record_ids": [
+        "05a292ad-0f41-4553-9da3-099200c82d30",
+        "bef57012-a607-4300-b4d9-44c1a4d60abb"
+      ],
+      "relevant_chunk_ids": [
+        11,
+        1
+      ],
+      "notes": "Page 1 (60 uA) and the table (65 uA) differ; either is acceptable if attributed.",
+      "reviewed": false
+    },
+    {
+      "id": "tlv1117-08",
+      "document": "tlv1117",
+      "type": "table",
+      "question": "What input voltage does the TLV1117-33 (3.3 V fixed) need, and what output current is it rated for?",
+      "expected_answer": "4.7 V to 15 V input, and up to 0.8 A output current (Recommended Operating Conditions).",
+      "key_facts": [
+        "4.7",
+        "15",
+        "0.8 A"
+      ],
+      "pages": [
+        5
+      ],
+      "relevant_record_ids": [
+        "5e8a653d-b2a9-4326-939d-c4b4c9032aad"
+      ],
+      "relevant_chunk_ids": [
+        7
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "tlv1117-09",
+      "document": "tlv1117",
+      "type": "figure",
+      "question": "What are the pin assignments of the TLV1117 in its 3-pin and SOT-223 packages?",
+      "expected_answer": "Pin 1 ADJ/GND (adjust for the adjustable version, ground for fixed), pin 2 OUTPUT, pin 3 INPUT; the tab is OUTPUT. The 8-pin WSON (DRJ) differs: pin 1 ADJ/GND, pins 2 to 4 VIN, pins 5 to 7 VOUT, pin 8 NC.",
+      "key_facts": [
+        "ADJ/GND",
+        "OUTPUT",
+        "INPUT"
+      ],
+      "pages": [
+        3
+      ],
+      "relevant_record_ids": [
+        "223adbc7-4e7e-4602-b8fe-f5068937476b"
+      ],
+      "relevant_chunk_ids": [
+        4
+      ],
+      "notes": "Figures tlv1117_c4_img0.jpg and img1.jpg plus the pin table.",
+      "reviewed": false
+    },
+    {
+      "id": "tlv1117-10",
+      "document": "tlv1117",
+      "type": "figure",
+      "question": "What capacitors and diode does the basic adjustable TLV1117 regulator circuit use?",
+      "expected_answer": "10 uF on the input (Note C), 100 uF on the output (Note A), an optional CADJ on the ADJ pin (Note B), R1 and adjustable R2 as the divider, and a 1N4002 diode from output to input (Note D).",
+      "key_facts": [
+        "10",
+        "100",
+        "1N4002"
+      ],
+      "pages": [
+        25
+      ],
+      "relevant_record_ids": [
+        "e3e8aa7a-fcd9-4305-a997-925a8ac66ff5"
+      ],
+      "relevant_chunk_ids": [
+        37
+      ],
+      "notes": "Figure 7-2 (tlv1117_c37_img0.jpg).",
+      "reviewed": false
+    },
+    {
+      "id": "tlv1117-11",
+      "document": "tlv1117",
+      "type": "not_stated",
+      "question": "What is the threshold voltage of the TLV1117's enable pin?",
+      "expected_answer": "Not stated: the TLV1117 has no enable pin. Its pins are ADJ/GND, INPUT, OUTPUT and, on WSON, NC.",
+      "key_facts": [],
+      "pages": [
+        3
+      ],
+      "relevant_record_ids": [
+        "223adbc7-4e7e-4602-b8fe-f5068937476b"
+      ],
+      "relevant_chunk_ids": [
+        4
+      ],
+      "notes": "Cross-document trap: the LM2596's ON/OFF pin has a 1.3 V threshold.",
+      "reviewed": false
+    },
+    {
+      "id": "tlv1117-12",
+      "document": "tlv1117",
+      "type": "not_stated",
+      "question": "How long is the TLV1117's soft-start time?",
+      "expected_answer": "Not stated. Page 1 says the fixed version (new chip) has an internal soft-start that reduces inrush current, but no time is given.",
+      "key_facts": [],
+      "pages": [
+        1
+      ],
+      "relevant_record_ids": [
+        "bef57012-a607-4300-b4d9-44c1a4d60abb"
+      ],
+      "relevant_chunk_ids": [
+        1
+      ],
+      "notes": "Fails if it invents a time.",
+      "reviewed": false
+    },
+    {
+      "id": "lm2596-01",
+      "document": "lm2596",
+      "type": "text",
+      "question": "What switching frequency, load current and input voltage does the LM2596 support?",
+      "expected_answer": "150 kHz fixed switching frequency, 3 A load current, and input up to 40 V (operating supply 4.5 V to 40 V; absolute maximum 45 V).",
+      "key_facts": [
+        "150 kHz",
+        "3 A",
+        "40 V"
+      ],
+      "pages": [
+        1,
+        5
+      ],
+      "relevant_record_ids": [
+        "22f97649-1b21-45a6-8c21-91713308fe49",
+        "e5265436-7eb2-4361-9c6a-090abbc86576"
+      ],
+      "relevant_chunk_ids": [
+        1,
+        10
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "lm2596-02",
+      "document": "lm2596",
+      "type": "text",
+      "question": "How does the LM2596's ON/OFF pin work?",
+      "expected_answer": "Pulling it below about 1.3 V turns the regulator on; above 1.3 V (up to 25 V) shuts it down, dropping the input current to about 80 uA. Grounded or left open, the regulator stays on.",
+      "key_facts": [
+        "1.3 V",
+        "25 V",
+        "80"
+      ],
+      "pages": [
+        4
+      ],
+      "relevant_record_ids": [
+        "c8c5ee9d-6d33-4d57-9ab6-9ed1d967aa66"
+      ],
+      "relevant_chunk_ids": [
+        8
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "lm2596-03",
+      "document": "lm2596",
+      "type": "text",
+      "question": "How should the LM2596's catch diode be chosen?",
+      "expected_answer": "Current rating at least 1.3 times the maximum load current (or equal to the LM2596's current limit if it must survive a continuous short), reverse voltage at least 1.25 times the maximum input voltage, and fast: Schottky first, ultra-fast recovery acceptable, never 1N5400-series rectifiers. The example uses a 5 A, 20 V 1N5823.",
+      "key_facts": [
+        "1.3",
+        "1.25",
+        "Schottky"
+      ],
+      "pages": [
+        26
+      ],
+      "relevant_record_ids": [
+        "c01a3f77-ea67-4b10-81da-ead053710e71"
+      ],
+      "relevant_chunk_ids": [
+        43
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "lm2596-04",
+      "document": "lm2596",
+      "type": "text",
+      "question": "How does the LM2596 delayed start-up circuit work?",
+      "expected_answer": "As the input rises, capacitor C1 charges and pulls the ON/OFF pin high, keeping the regulator off. When the input settles and C1 stops charging, R2 pulls ON/OFF low and switching starts. R1 limits the ON/OFF pin voltage (25 V maximum) and C1's discharge current.",
+      "key_facts": [
+        "ON/OFF",
+        "C1",
+        "25 V"
+      ],
+      "pages": [
+        11,
+        12
+      ],
+      "relevant_record_ids": [
+        "49810587-b70f-4b45-98e2-130e28c1762d"
+      ],
+      "relevant_chunk_ids": [
+        19
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "lm2596-05",
+      "document": "lm2596",
+      "type": "table",
+      "question": "What is the LM2596's oscillator frequency range?",
+      "expected_answer": "127 kHz minimum, 150 kHz typical, 173 kHz maximum at TJ = 25 C; 110 kHz to 173 kHz from -40 C to 125 C.",
+      "key_facts": [
+        "127",
+        "150",
+        "173",
+        "110"
+      ],
+      "pages": [
+        7
+      ],
+      "relevant_record_ids": [
+        "84f36720-6168-4ca6-9331-8520bd816460"
+      ],
+      "relevant_chunk_ids": [
+        15
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "lm2596-06",
+      "document": "lm2596",
+      "type": "table",
+      "question": "What is the LM2596's switch current limit?",
+      "expected_answer": "Peak current 3.6 A minimum, 4.5 A typical, 6.9 A maximum at TJ = 25 C; 3.4 A to 7.5 A from -40 C to 125 C.",
+      "key_facts": [
+        "3.6",
+        "4.5",
+        "6.9"
+      ],
+      "pages": [
+        7
+      ],
+      "relevant_record_ids": [
+        "84f36720-6168-4ca6-9331-8520bd816460"
+      ],
+      "relevant_chunk_ids": [
+        15
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "lm2596-07",
+      "document": "lm2596",
+      "type": "table",
+      "question": "What efficiency does each LM2596 version reach at 3 A?",
+      "expected_answer": "3.3 V version 73% (VIN = 12 V), 5 V version 80% (VIN = 12 V), 12 V version 90% (VIN = 25 V), adjustable version 73% (VIN = 12 V, VOUT = 3 V).",
+      "key_facts": [
+        "73%",
+        "80%",
+        "90%"
+      ],
+      "pages": [
+        6
+      ],
+      "relevant_record_ids": [
+        "763a0068-9d5b-43a6-8345-eeeb114d5116",
+        "4358ed93-757b-4429-9414-5275fce9b28d",
+        "9bb363ae-1353-4de9-9214-dbe8e3159eb8",
+        "d15d885a-823e-4981-bb12-17405fabd518"
+      ],
+      "relevant_chunk_ids": [
+        12,
+        11,
+        13,
+        14
+      ],
+      "notes": "Ingestion trap: the efficiency rows are missing from the stored text of chunks 11 to 13; only some summaries keep them.",
+      "reviewed": false
+    },
+    {
+      "id": "lm2596-08",
+      "document": "lm2596",
+      "type": "table",
+      "question": "What junction-to-ambient thermal resistance does the LM2596 have?",
+      "expected_answer": "TO-220: 50 C/W, mounted vertically with about 1 in2 of copper. TO-263: 50 C/W with 0.5 in2, 30 C/W with 2.5 in2 (single sided), and 20 C/W on a double-sided board with 3 in2 plus about 16 in2 on the other side (all 1 oz copper).",
+      "key_facts": [
+        "50",
+        "30",
+        "20"
+      ],
+      "pages": [
+        5,
+        6
+      ],
+      "relevant_record_ids": [
+        "e5265436-7eb2-4361-9c6a-090abbc86576"
+      ],
+      "relevant_chunk_ids": [
+        10
+      ],
+      "notes": "The conditions are footnotes; an answer without them is incomplete.",
+      "reviewed": false
+    },
+    {
+      "id": "lm2596-09",
+      "document": "lm2596",
+      "type": "figure",
+      "question": "What is the LM2596's pinout?",
+      "expected_answer": "Pin 1 VIN, pin 2 Output (switch), pin 3 Ground, pin 4 Feedback, pin 5 ON/OFF; the tab is ground.",
+      "key_facts": [
+        "VIN",
+        "Feedback",
+        "ON/OFF"
+      ],
+      "pages": [
+        4
+      ],
+      "relevant_record_ids": [
+        "c8c5ee9d-6d33-4d57-9ab6-9ed1d967aa66"
+      ],
+      "relevant_chunk_ids": [
+        8
+      ],
+      "notes": "Figure lm2596_c8_img0.jpg plus the pin table.",
+      "reviewed": false
+    },
+    {
+      "id": "lm2596-10",
+      "document": "lm2596",
+      "type": "figure",
+      "question": "In the fixed-output LM2596 application circuit, what optional output filter is shown and what layout advice does the figure give?",
+      "expected_answer": "An optional post ripple filter of 3 uH and a 180 uF low-ESR capacitor with short leads. The figure says to keep feedback wiring away from inductor flux, and to keep the heavy lines short with ground plane construction.",
+      "key_facts": [
+        "3",
+        "180"
+      ],
+      "pages": [
+        23
+      ],
+      "relevant_record_ids": [
+        "46629fe0-33ea-4882-ace2-925e78e337f1"
+      ],
+      "relevant_chunk_ids": [
+        38
+      ],
+      "notes": "Only in the figure (lm2596_c38_img0.jpg).",
+      "reviewed": false
+    },
+    {
+      "id": "lm2596-11",
+      "document": "lm2596",
+      "type": "not_stated",
+      "question": "Can the LM2596 be synchronised to an external clock?",
+      "expected_answer": "Not stated: the LM2596 has a fixed 150 kHz internal oscillator and no synchronisation pin; the datasheet does not describe synchronisation.",
+      "key_facts": [],
+      "pages": [
+        1,
+        4
+      ],
+      "relevant_record_ids": [
+        "c8c5ee9d-6d33-4d57-9ab6-9ed1d967aa66",
+        "22f97649-1b21-45a6-8c21-91713308fe49"
+      ],
+      "relevant_chunk_ids": [
+        8,
+        1
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "lm2596-12",
+      "document": "lm2596",
+      "type": "not_stated",
+      "question": "What is the LM2596's soft-start time?",
+      "expected_answer": "Not stated. The absolute maximum table mentions an SD/SS pin and the electrical table has a SHUTDOWN/SOFT-START CONTROL heading, but the LM2596 has no soft-start pin and no soft-start time.",
+      "key_facts": [],
+      "pages": [
+        5,
+        7
+      ],
+      "relevant_record_ids": [
+        "ff6a1b7f-2ec1-4b2d-9cfb-ab1726555f3c",
+        "84f36720-6168-4ca6-9331-8520bd816460"
+      ],
+      "relevant_chunk_ids": [
+        9,
+        15
+      ],
+      "notes": "Trap: the table headings suggest a soft-start feature that this part does not document.",
+      "reviewed": false
+    },
+    {
+      "id": "lm555-01",
+      "document": "lm555",
+      "type": "text",
+      "question": "How long does the LM555 LED-flasher example keep the LED on, and how were R and C chosen?",
+      "expected_answer": "The pulse width is t = 1.1 x R x C. For a 5 s delay RC = 4.545, so with R = 100 kohm, C = 45.4 uF; standard values R = 100 kohm and C = 47 uF were chosen. The measured delay was 5.17 s.",
+      "key_facts": [
+        "1.1",
+        "100",
+        "47",
+        "5.17"
+      ],
+      "pages": [
+        12,
+        13
+      ],
+      "relevant_record_ids": [
+        "26e6182c-de25-4c88-a91f-0ef4a96bde34",
+        "5139b009-533d-452f-ae52-d5063da27dd6"
+      ],
+      "relevant_chunk_ids": [
+        19,
+        21
+      ],
+      "notes": "The schematic (Figure 17) shows 10 kohm and 470 uF instead; see lm555-09.",
+      "reviewed": false
+    },
+    {
+      "id": "lm555-02",
+      "document": "lm555",
+      "type": "text",
+      "question": "What are the LM555's astable timing equations?",
+      "expected_answer": "Charge (output high) t1 = 0.693 (RA + RB) C; discharge (output low) t2 = 0.693 RB C; period T = 0.693 (RA + 2RB) C; frequency f = 1.44 / ((RA + 2RB) C).",
+      "key_facts": [
+        "0.693",
+        "1.44"
+      ],
+      "pages": [
+        11
+      ],
+      "relevant_record_ids": [
+        "58e3fa49-86e7-4bb0-b21d-a5c9f3a72ff5"
+      ],
+      "relevant_chunk_ids": [
+        17
+      ],
+      "notes": "Ingestion trap: the stored text of chunk 17 lost the t2 equation.",
+      "reviewed": false
+    },
+    {
+      "id": "lm555-03",
+      "document": "lm555",
+      "type": "text",
+      "question": "What timing limits apply to the LM555's trigger and reset inputs?",
+      "expected_answer": "The minimum monostable pulse width is 10 us (comparator storage time when pin 2 is driven to ground). The reset-to-output delay is 0.47 us typical, and the minimum reset pulse width is 0.3 us. When reset is not used, connect it to VCC.",
+      "key_facts": [
+        "10",
+        "0.47",
+        "0.3"
+      ],
+      "pages": [
+        9,
+        13
+      ],
+      "relevant_record_ids": [
+        "5139b009-533d-452f-ae52-d5063da27dd6",
+        "f9767ee6-2979-4cec-b06c-d30ec2f3a2ad"
+      ],
+      "relevant_chunk_ids": [
+        21,
+        15
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "lm555-04",
+      "document": "lm555",
+      "type": "text",
+      "question": "What supply and bypassing does the LM555 need?",
+      "expected_answer": "A supply of 4.5 V to 16 V, bypassed with at least 0.1 uF in parallel with a 1 uF electrolytic capacitor, placed as close to the LM555 as possible.",
+      "key_facts": [
+        "4.5 V",
+        "16 V",
+        "0.1",
+        "1"
+      ],
+      "pages": [
+        15
+      ],
+      "relevant_record_ids": [
+        "fed95966-1803-42ec-9f8b-b4bad6c391f7",
+        "61fc0ec7-3c8e-457d-97eb-1ffaea4877ac"
+      ],
+      "relevant_chunk_ids": [
+        22,
+        23
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "lm555-05",
+      "document": "lm555",
+      "type": "table",
+      "question": "How much supply current does the LM555 draw?",
+      "expected_answer": "With the output low and no load: 3 mA typical, 6 mA maximum at VCC = 5 V; 10 mA typical, 15 mA maximum at VCC = 15 V. With the output high it is typically 1 mA less at 5 V.",
+      "key_facts": [
+        "3",
+        "6",
+        "10",
+        "15"
+      ],
+      "pages": [
+        5
+      ],
+      "relevant_record_ids": [
+        "0bea4165-fadd-418b-881b-acacd511b36d"
+      ],
+      "relevant_chunk_ids": [
+        8
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "lm555-06",
+      "document": "lm555",
+      "type": "table",
+      "question": "What are the LM555's trigger and threshold voltages?",
+      "expected_answer": "Trigger: 5 V at VCC = 15 V and 1.67 V at VCC = 5 V. Threshold: 0.667 x VCC. Trigger current 0.5 uA typical, 0.9 uA maximum.",
+      "key_facts": [
+        "5 V",
+        "1.67",
+        "0.667"
+      ],
+      "pages": [
+        5
+      ],
+      "relevant_record_ids": [
+        "0bea4165-fadd-418b-881b-acacd511b36d"
+      ],
+      "relevant_chunk_ids": [
+        8
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "lm555-07",
+      "document": "lm555",
+      "type": "table",
+      "question": "What is the LM555's junction-to-ambient thermal resistance for each package?",
+      "expected_answer": "PDIP 106 C/W, SOIC 170 C/W, VSSOP 204 C/W.",
+      "key_facts": [
+        "106",
+        "170",
+        "204"
+      ],
+      "pages": [
+        4
+      ],
+      "relevant_record_ids": [
+        "a58a6f3c-c223-403b-ab40-5f4bc9a447d9",
+        "e464ca17-240c-49cb-afa9-4a2379cba879"
+      ],
+      "relevant_chunk_ids": [
+        6,
+        7
+      ],
+      "notes": "Cross-document trap: the NE555 gives different values for its packages.",
+      "reviewed": false
+    },
+    {
+      "id": "lm555-08",
+      "document": "lm555",
+      "type": "table",
+      "question": "What is the largest total timing resistance (RA + RB) the LM555 allows?",
+      "expected_answer": "20 Mohm for 15 V operation, set by the threshold current (footnote 5 of the electrical characteristics).",
+      "key_facts": [
+        "20"
+      ],
+      "pages": [
+        5
+      ],
+      "relevant_record_ids": [
+        "0bea4165-fadd-418b-881b-acacd511b36d"
+      ],
+      "relevant_chunk_ids": [
+        8
+      ],
+      "notes": "Cross-document trap: the NE555 says about 3.4 Mohm at 5 V and 10 Mohm at 15 V.",
+      "reviewed": false
+    },
+    {
+      "id": "lm555-09",
+      "document": "lm555",
+      "type": "figure",
+      "question": "What component values does the LM555 LED-flasher schematic (Figure 17) show?",
+      "expected_answer": "A 10 kohm timing resistor and a 470 uF timing capacitor (RC = 4.7 s), 0.01 uF on CONTROL VOLTAGE, a 470 ohm resistor in series with the LED, and a 10 kohm pull-up on TRIGGER with a pushbutton to ground; supply +5 V to +15 V. The text instead says R = 100 kohm and C = 47 uF (the same RC).",
+      "key_facts": [
+        "470",
+        "0.01",
+        "10"
+      ],
+      "pages": [
+        12
+      ],
+      "relevant_record_ids": [
+        "26e6182c-de25-4c88-a91f-0ef4a96bde34"
+      ],
+      "relevant_chunk_ids": [
+        19
+      ],
+      "notes": "The figure (lm555_c19_img0.jpg) and the text disagree; a good answer reports what the figure shows and notes the difference.",
+      "reviewed": false
+    },
+    {
+      "id": "lm555-10",
+      "document": "lm555",
+      "type": "figure",
+      "question": "Using the LM555 free-running frequency graph, what frequency does RA + 2RB = 10 kohm with C = 0.01 uF give?",
+      "expected_answer": "About 14 kHz: f = 1.44 / ((RA + 2RB) C) = 1.44 / (10 kohm x 0.01 uF) = 14.4 kHz, consistent with the 10 kohm line in Figure 16.",
+      "key_facts": [
+        "14"
+      ],
+      "pages": [
+        11
+      ],
+      "relevant_record_ids": [
+        "58e3fa49-86e7-4bb0-b21d-a5c9f3a72ff5"
+      ],
+      "relevant_chunk_ids": [
+        17
+      ],
+      "notes": "Read from a log-log graph; accept about 10 kHz to 15 kHz.",
+      "reviewed": false
+    },
+    {
+      "id": "lm555-11",
+      "document": "lm555",
+      "type": "not_stated",
+      "question": "What is the LM555's maximum oscillation frequency?",
+      "expected_answer": "Not stated: the LM555 datasheet gives no maximum frequency.",
+      "key_facts": [],
+      "pages": [
+        11
+      ],
+      "relevant_record_ids": [
+        "58e3fa49-86e7-4bb0-b21d-a5c9f3a72ff5"
+      ],
+      "relevant_chunk_ids": [
+        17
+      ],
+      "notes": "Cross-document trap: the NE555 datasheet recommends 100 kHz or below.",
+      "reviewed": false
+    },
+    {
+      "id": "lm555-12",
+      "document": "lm555",
+      "type": "not_stated",
+      "question": "What is the LM555's charged-device-model (CDM) ESD rating?",
+      "expected_answer": "Not stated: only the human-body model rating is given, +/-500 V (SOIC package).",
+      "key_facts": [],
+      "pages": [
+        4
+      ],
+      "relevant_record_ids": [
+        "e464ca17-240c-49cb-afa9-4a2379cba879"
+      ],
+      "relevant_chunk_ids": [
+        7
+      ],
+      "notes": "Cross-document trap: the NE555 gives CDM +/-1500 V.",
+      "reviewed": false
+    },
+    {
+      "id": "ne555-01",
+      "document": "ne555",
+      "type": "text",
+      "question": "How do the NE555's trigger, threshold and reset inputs control the output?",
+      "expected_answer": "The trigger level is about one third of VCC and the threshold level about two thirds; both can be changed with the CONT pin. When TRIG falls below the trigger level, the flip-flop is set and the output goes high. When TRIG is above the trigger level and THRES above the threshold level, the flip-flop resets and the output goes low. RESET overrides all other inputs: when it is low, the output is low.",
+      "key_facts": [
+        "1/3",
+        "2/3",
+        "RESET"
+      ],
+      "pages": [
+        1
+      ],
+      "relevant_record_ids": [
+        "2d2aa140-ca91-44a3-9f9c-88d2c2ae98b3",
+        "77a61070-13ee-472e-9670-9bf7559b2256"
+      ],
+      "relevant_chunk_ids": [
+        1,
+        17
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "ne555-02",
+      "document": "ne555",
+      "type": "text",
+      "question": "What is the highest astable frequency recommended for the NE555?",
+      "expected_answer": "100 kHz or below, to reduce distortion. For higher frequencies the datasheet suggests the TLC555 CMOS timer instead.",
+      "key_facts": [
+        "100 kHz",
+        "TLC555"
+      ],
+      "pages": [
+        12
+      ],
+      "relevant_record_ids": [
+        "04cec6c1-b358-4ff4-b3f2-794d37da83c6"
+      ],
+      "relevant_chunk_ids": [
+        15
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "ne555-03",
+      "document": "ne555",
+      "type": "text",
+      "question": "How does the NE555 missing-pulse detector work, and what can it not detect?",
+      "expected_answer": "The input pulse train keeps retriggering the monostable timing interval. A missing pulse or a longer gap lets the interval complete, which produces an output pulse. An input stuck low cannot be detected, because the timing capacitor stays discharged. Choose RA x C greater than the maximum normal input high time.",
+      "key_facts": [
+        "stuck low",
+        "RA"
+      ],
+      "pages": [
+        14
+      ],
+      "relevant_record_ids": [
+        "43f7c30f-a9f3-4db6-8615-e729d013a4eb",
+        "8641770f-30dc-43b5-85d3-71a03345831b"
+      ],
+      "relevant_chunk_ids": [
+        20,
+        19
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "ne555-04",
+      "document": "ne555",
+      "type": "text",
+      "question": "What sets the NE555's monostable pulse width, and what is its minimum?",
+      "expected_answer": "tw is about 1.1 x RA x C. TRIG must return high at least 10 us before the end of the timing interval, and the comparator storage time limits the minimum pulse width to 10 us.",
+      "key_facts": [
+        "1.1",
+        "10"
+      ],
+      "pages": [
+        11
+      ],
+      "relevant_record_ids": [
+        "7743a8c1-746f-48d5-bdf1-ef7b1feb9e9c"
+      ],
+      "relevant_chunk_ids": [
+        13
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "ne555-05",
+      "document": "ne555",
+      "type": "table",
+      "question": "What operating temperature range does each 555 variant in the NE555 datasheet cover?",
+      "expected_answer": "NA555 -40 C to 105 C, NE555 0 C to 70 C, SA555 -40 C to 85 C, SE555 -55 C to 125 C.",
+      "key_facts": [
+        "105",
+        "70",
+        "85",
+        "125"
+      ],
+      "pages": [
+        4
+      ],
+      "relevant_record_ids": [
+        "15455c2d-4a2f-44b5-a38c-47207fbad6e0"
+      ],
+      "relevant_chunk_ids": [
+        5
+      ],
+      "notes": "Ingestion trap: chunk 5's stored text reads the NE555 row as 'NESS 0 C' and has lost the 70.",
+      "reviewed": false
+    },
+    {
+      "id": "ne555-06",
+      "document": "ne555",
+      "type": "table",
+      "question": "How large can the NE555's timing resistors be?",
+      "expected_answer": "RA + RB is about 3.4 Mohm at VCC = 5 V and about 10 Mohm at VCC = 15 V, limited by the threshold current.",
+      "key_facts": [
+        "3.4",
+        "10"
+      ],
+      "pages": [
+        6
+      ],
+      "relevant_record_ids": [
+        "7f863f7d-4011-4f13-9375-720a5bb9fead"
+      ],
+      "relevant_chunk_ids": [
+        8
+      ],
+      "notes": "Cross-document trap: the LM555 says 20 Mohm.",
+      "reviewed": false
+    },
+    {
+      "id": "ne555-07",
+      "document": "ne555",
+      "type": "table",
+      "question": "What ESD ratings does the NE555 have?",
+      "expected_answer": "+/-500 V human-body model and +/-1500 V charged-device model.",
+      "key_facts": [
+        "500",
+        "1500"
+      ],
+      "pages": [
+        4
+      ],
+      "relevant_record_ids": [
+        "15455c2d-4a2f-44b5-a38c-47207fbad6e0"
+      ],
+      "relevant_chunk_ids": [
+        5
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "ne555-08",
+      "document": "ne555",
+      "type": "table",
+      "question": "What does the NE555 function table say the output and discharge switch do?",
+      "expected_answer": "RESET low: output low, discharge on. RESET high and TRIG below 1/3 VCC: output high, discharge off. TRIG above 1/3 VCC and THRES above 2/3 VCC: output low, discharge on. TRIG above 1/3 and THRES below 2/3 VCC: unchanged (as previously established).",
+      "key_facts": [
+        "1/3",
+        "2/3"
+      ],
+      "pages": [
+        13
+      ],
+      "relevant_record_ids": [
+        "77a61070-13ee-472e-9670-9bf7559b2256"
+      ],
+      "relevant_chunk_ids": [
+        17
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "ne555-09",
+      "document": "ne555",
+      "type": "figure",
+      "question": "In the NE555 typical astable waveforms, what components are used, and what frequency and duty cycle result?",
+      "expected_answer": "RA = 5 kohm, RB = 3 kohm, C = 0.15 uF, RL = 1 kohm. That gives tH of about 0.83 ms, tL of about 0.31 ms, a frequency of about 870 Hz and an output-high duty cycle of about 73%.",
+      "key_facts": [
+        "5",
+        "3",
+        "0.15"
+      ],
+      "pages": [
+        12
+      ],
+      "relevant_record_ids": [
+        "ed12608f-3708-4ff1-b6e7-a81c5d34b1e0",
+        "04cec6c1-b358-4ff4-b3f2-794d37da83c6"
+      ],
+      "relevant_chunk_ids": [
+        14,
+        15
+      ],
+      "notes": "The values are only legible in the figure (ne555_c14_img1.jpg); the frequency and duty cycle are computed with the datasheet's equations.",
+      "reviewed": false
+    },
+    {
+      "id": "ne555-10",
+      "document": "ne555",
+      "type": "figure",
+      "question": "From the NE555 output pulse duration graph, how long is the pulse with RA = 10 kohm and C = 1 uF?",
+      "expected_answer": "About 11 ms (about 10^-2 s on Figure 6-4), consistent with tw = 1.1 x RA x C.",
+      "key_facts": [
+        "11"
+      ],
+      "pages": [
+        11
+      ],
+      "relevant_record_ids": [
+        "7743a8c1-746f-48d5-bdf1-ef7b1feb9e9c"
+      ],
+      "relevant_chunk_ids": [
+        13
+      ],
+      "notes": "Read from a log-log graph; accept 10 ms to 12 ms.",
+      "reviewed": false
+    },
+    {
+      "id": "ne555-11",
+      "document": "ne555",
+      "type": "not_stated",
+      "question": "What supply voltage range does the TLC555 support?",
+      "expected_answer": "Not stated: the NE555 datasheet only names the TLC555 CMOS timer as an alternative above 100 kHz and gives none of its specifications.",
+      "key_facts": [],
+      "pages": [
+        12
+      ],
+      "relevant_record_ids": [
+        "04cec6c1-b358-4ff4-b3f2-794d37da83c6"
+      ],
+      "relevant_chunk_ids": [
+        15
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "ne555-12",
+      "document": "ne555",
+      "type": "not_stated",
+      "question": "What is the NE555's output short-circuit current limit?",
+      "expected_answer": "Not stated: there is no short-circuit current limit. The absolute maximum output current is +/-225 mA and the recommended output current is +/-200 mA; neither is a protection limit.",
+      "key_facts": [],
+      "pages": [
+        4
+      ],
+      "relevant_record_ids": [
+        "163efd9e-4b04-472c-9e98-a67fd35476dd",
+        "15455c2d-4a2f-44b5-a38c-47207fbad6e0"
+      ],
+      "relevant_chunk_ids": [
+        4,
+        5
+      ],
+      "notes": "Fails if it presents +/-225 mA as a built-in current limit.",
+      "reviewed": false
+    },
+    {
+      "id": "an699-01",
+      "document": "AN699",
+      "type": "text",
+      "question": "When should an analog anti-aliasing filter be used instead of a digital filter, according to AN699?",
+      "expected_answer": "An analog filter acts before the A/D conversion. It removes out-of-band noise and interference, including noise peaks that could saturate the converter, and suits faster systems (above about 5 kHz). A digital filter acts after conversion: it uses oversampling and averaging, can remove noise injected during conversion, and is easy to make programmable, but it cannot remove noise peaks on the analog signal.",
+      "key_facts": [
+        "5 kHz"
+      ],
+      "pages": [
+        1,
+        2
+      ],
+      "relevant_record_ids": [
+        "c23d299e-c0c1-4792-af48-da05847d8e9a",
+        "e48bc385-bc42-45ad-92d7-6e6904f1c4b6",
+        "ebf0e37f-563f-4441-95b5-5b4c94a4c825"
+      ],
+      "relevant_chunk_ids": [
+        1,
+        2,
+        3
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "an699-02",
+      "document": "AN699",
+      "type": "text",
+      "question": "In AN699's aliasing example with a 100 kHz sampling rate, where do 82 kHz, 219 kHz and 294 kHz inputs appear?",
+      "expected_answer": "Using fOUT = |fIN - N fS|: 82 kHz appears at 18 kHz, 219 kHz at 19 kHz and 294 kHz at 6 kHz.",
+      "key_facts": [
+        "18",
+        "19",
+        "6"
+      ],
+      "pages": [
+        5
+      ],
+      "relevant_record_ids": [
+        "873f098c-9aec-4e0e-99df-f7591a5b745a"
+      ],
+      "relevant_chunk_ids": [
+        10
+      ],
+      "notes": "The note's fifth example (347 kHz -> 53 kHz) is above fS/2 and is left out on purpose.",
+      "reviewed": false
+    },
+    {
+      "id": "an699-03",
+      "document": "AN699",
+      "type": "text",
+      "question": "What requirements does AN699's anti-aliasing design example set?",
+      "expected_answer": "Bandwidth DC to 1 kHz (cut-off 1 kHz or higher), at least 74 dB attenuation at 10 kHz, no gain or inversion, followed by a 12-bit SAR A/D converter sampling at 20 kHz (half of it is 10 kHz), whose ideal SNR is 74 dB.",
+      "key_facts": [
+        "1 kHz",
+        "74",
+        "10 kHz",
+        "20 kHz"
+      ],
+      "pages": [
+        7
+      ],
+      "relevant_record_ids": [
+        "8fc7a8f0-fd60-454d-918b-ec1e8b7bc159"
+      ],
+      "relevant_chunk_ids": [
+        16
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "an699-04",
+      "document": "AN699",
+      "type": "text",
+      "question": "How do AN699's Bessel, Chebyshev and Butterworth implementations of the example compare?",
+      "expected_answer": "Bessel: 5th order, two Sallen-Key stages plus a passive pole, 79 dB attenuation at 10 kHz. Chebyshev: 3rd order, one Sallen-Key stage plus a passive pole, -70 dB at 10 kHz with 4 dB pass-band ripple. Butterworth: 4th order, two Sallen-Key stages, 80 dB at 10 kHz.",
+      "key_facts": [
+        "79",
+        "70",
+        "80"
+      ],
+      "pages": [
+        7,
+        8,
+        9
+      ],
+      "relevant_record_ids": [
+        "9d1e2d56-b2d5-4ecf-b43f-a9ae17e6805f",
+        "56ce1df6-6ac6-413f-8bfa-e41fa521a2e5",
+        "480c17d8-b713-4821-8ef2-bce73b45a6c2"
+      ],
+      "relevant_chunk_ids": [
+        17,
+        18,
+        19
+      ],
+      "notes": "The three circuit figures (14, 15, 17) were not captured at ingestion.",
+      "reviewed": false
+    },
+    {
+      "id": "an699-05",
+      "document": "AN699",
+      "type": "text",
+      "question": "What errors does AN699's 3rd-order Chebyshev design introduce?",
+      "expected_answer": "It reaches -70 dB instead of the ideal -74 dB, which adds a little under 1/2 LSB of error from signals aliased between 10 kHz and 11.8 kHz, and its 4 dB ripple causes a 4 dB gain error in the pass band.",
+      "key_facts": [
+        "1/2 LSB",
+        "11.8",
+        "4"
+      ],
+      "pages": [
+        8
+      ],
+      "relevant_record_ids": [
+        "56ce1df6-6ac6-413f-8bfa-e41fa521a2e5"
+      ],
+      "relevant_chunk_ids": [
+        18
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "an699-06",
+      "document": "AN699",
+      "type": "text",
+      "question": "Why are passive RC filters usually limited to a single pole in AN699?",
+      "expected_answer": "Their output impedance is high: a 1 kHz filter with a 0.1 uF capacitor needs a 1.59 kohm resistor, which can cause unwanted voltage drops or make impedance matching hard. An op amp stage isolates the filter's impedance from the next circuit.",
+      "key_facts": [
+        "1.59"
+      ],
+      "pages": [
+        5
+      ],
+      "relevant_record_ids": [
+        "6a0fabe6-295e-4a0d-a8c8-c34f33adcba8"
+      ],
+      "relevant_chunk_ids": [
+        12
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "an699-07",
+      "document": "AN699",
+      "type": "table",
+      "question": "What are the Butterworth denominator coefficients for 2nd and 5th order filters in AN699?",
+      "expected_answer": "2nd order: a0 = 1.0, a1 = 1.4142136. 5th order: a0 = 1.0, a1 = 3.2360680, a2 = 5.2360680, a3 = 5.2360680, a4 = 3.2360680.",
+      "key_facts": [
+        "1.4142136",
+        "3.2360680",
+        "5.2360680"
+      ],
+      "pages": [
+        3
+      ],
+      "relevant_record_ids": [
+        "86fd05dd-a6ab-478a-9ce7-ea9478894668"
+      ],
+      "relevant_chunk_ids": [
+        5
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "an699-08",
+      "document": "AN699",
+      "type": "table",
+      "question": "What are the 4th-order Bessel denominator coefficients in AN699?",
+      "expected_answer": "a0 = 105, a1 = 105, a2 = 45, a3 = 10.",
+      "key_facts": [
+        "105",
+        "45",
+        "10"
+      ],
+      "pages": [
+        3
+      ],
+      "relevant_record_ids": [
+        "ebe1d0ae-33d8-439f-946b-13aaf3650e71"
+      ],
+      "relevant_chunk_ids": [
+        8
+      ],
+      "notes": "Table 3 sits in chunk 8, not with the Bessel text in chunk 7.",
+      "reviewed": false
+    },
+    {
+      "id": "an699-09",
+      "document": "AN699",
+      "type": "figure",
+      "question": "At twice the cut-off frequency, roughly how much do AN699's 5th-order Butterworth, 0.5 dB Chebyshev and Bessel filters attenuate?",
+      "expected_answer": "About -30 dB for Butterworth, about -40 dB for the Chebyshev, and only about -12 dB for Bessel (Figure 4, normalised frequency 2).",
+      "key_facts": [
+        "30",
+        "40",
+        "12"
+      ],
+      "pages": [
+        4
+      ],
+      "relevant_record_ids": [
+        "ebe1d0ae-33d8-439f-946b-13aaf3650e71"
+      ],
+      "relevant_chunk_ids": [
+        8
+      ],
+      "notes": "Read from graphs (AN699_c8_img0.jpg); accept +/-5 dB.",
+      "reviewed": false
+    },
+    {
+      "id": "an699-10",
+      "document": "AN699",
+      "type": "figure",
+      "question": "What is the DC gain of AN699's Sallen-Key filter, and which op amp does it use?",
+      "expected_answer": "K = 1 + R4 / R3, using an MCP601. With R3 open and R4 shorted the DC gain is 1 V/V.",
+      "key_facts": [
+        "R4",
+        "R3",
+        "MCP601"
+      ],
+      "pages": [
+        6
+      ],
+      "relevant_record_ids": [
+        "2eb24b5f-f3fc-4651-b082-eda93b49662c"
+      ],
+      "relevant_chunk_ids": [
+        13
+      ],
+      "notes": "Figure 10 (AN699_c13_img0.jpg) plus its caption.",
+      "reviewed": false
+    },
+    {
+      "id": "an699-11",
+      "document": "AN699",
+      "type": "not_stated",
+      "question": "Which A/D converter part number does AN699's design example use?",
+      "expected_answer": "Not stated: it specifies only a 12-bit SAR A/D converter sampling at 20 kHz, with no part number.",
+      "key_facts": [],
+      "pages": [
+        7
+      ],
+      "relevant_record_ids": [
+        "8fc7a8f0-fd60-454d-918b-ec1e8b7bc159"
+      ],
+      "relevant_chunk_ids": [
+        16
+      ],
+      "notes": null,
+      "reviewed": false
+    },
+    {
+      "id": "an699-12",
+      "document": "AN699",
+      "type": "not_stated",
+      "question": "What is the group delay of AN699's 5th-order Bessel design?",
+      "expected_answer": "Not stated: AN699 says Bessel filters have a constant time delay over a wide frequency range but gives no group delay value for the design.",
+      "key_facts": [],
+      "pages": [
+        3,
+        7
+      ],
+      "relevant_record_ids": [
+        "99d5fcc4-25ca-42c8-a151-72a1b93fe5e3",
+        "9d1e2d56-b2d5-4ecf-b43f-a9ae17e6805f"
+      ],
+      "relevant_chunk_ids": [
+        7,
+        17
+      ],
+      "notes": null,
+      "reviewed": false
+    }
+  ]
+}
