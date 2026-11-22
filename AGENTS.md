@@ -101,6 +101,8 @@ src/retrieval/
   prompt.py               build the multimodal prompt, label chunks (C1) and figures (IMG1)
   citations.py            read the finished answer's [C1] and [IMG1] citations and check them
   generate.py             retrieve, stream the answer from the model, count tokens, price, trace
+src/db/schema.py        Postgres tables (documents, chunks with vector(768), images), SQLAlchemy Core
+migrations/             Alembic migrations that create those tables (alembic.ini at the root)
 src/documents.py        turns stored chunk metadata back into text, tables, images
 src/browse.py           lists stored documents and a document's chunks in order (no search)
 api/main.py             FastAPI app: CORS, lifespan, include_router calls
@@ -171,7 +173,7 @@ Notes:
 
 ## Environment variables
 
-`GEMINI_API_KEY`, `HF_TOKEN`, `WATSONX_API_KEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL`, `API_BASE_URL`, `CORS_ALLOWED_ORIGINS`, `GENERATION_MAX_TOKENS`, and the LangSmith variables (`LANGSMITH_API_KEY`, `LANGSMITH_TRACING`, `LANGSMITH_PROJECT`). See `config/settings.py` for defaults. `LANGSMITH_TRACING` is the one tracing switch: when it is unset the legacy `LANGCHAIN_TRACING_V2` is used, and `config/settings.py` writes the result to `LANGSMITH_TRACING_V2`, which the langsmith library checks first.
+`GEMINI_API_KEY`, `HF_TOKEN`, `WATSONX_API_KEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL`, `DATABASE_URL` (Neon, pooled), `DATABASE_URL_DIRECT` (Neon, direct; migrations and bulk copies), `API_BASE_URL`, `CORS_ALLOWED_ORIGINS`, `GENERATION_MAX_TOKENS`, and the LangSmith variables (`LANGSMITH_API_KEY`, `LANGSMITH_TRACING`, `LANGSMITH_PROJECT`). See `config/settings.py` for defaults. `LANGSMITH_TRACING` is the one tracing switch: when it is unset the legacy `LANGCHAIN_TRACING_V2` is used, and `config/settings.py` writes the result to `LANGSMITH_TRACING_V2`, which the langsmith library checks first.
 
 Ingestion summaries: `ENHANCEMENT_BACKEND` (`huggingface` or `local`) and the `ENHANCEMENT_*` and `LOCAL_ENHANCEMENT_*` tunables; see the ingestion section of `CONTRIBUTING.md`.
 
@@ -273,6 +275,7 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 
 **Checkpoint 6. Postgres + pgvector.** Runs before Checkpoint 5 (decided 2026-11-21). Host: Neon (decided 2026-11-22), in the same region as the Render API.
 - Schema for documents, chunks (with `vector(768)`), images, queries, retrievals, answers, and feedback, with Alembic migrations.
+  Started 2026-11-22: `src/db/schema.py` and the first migration (`migrations/versions/0001_documents_chunks_images.py`) create `documents`, `chunks` and `images` and enable pgvector; `alembic upgrade head`, `alembic check` (no drift), `downgrade base` and `upgrade` again ran on the Neon `dev` branch. The other tables come with the code that writes them. The Chroma collection uses cosine distance, so pgvector searches with `<=>`. Packages added: `sqlalchemy` (Core only, no ORM), `psycopg[binary]`, `alembic`, `pgvector`.
 - A one-off script copies ids, summaries, embeddings, and metadata out of Chroma into Postgres. No summarizer and no re-embedding.
 - Each Chroma record id becomes the chunk's primary key, stored as the Postgres `uuid` type, unchanged. Figure URLs (`/v1/images/{record_id}/{position}`) contain this id, so generating new ids would break every figure link a client holds.
 - Swap the retriever to pgvector and check it returns what Chroma returns: for about 50 real questions, the same record ids among the 20 nearest chunks and the same final 5 after MMR.

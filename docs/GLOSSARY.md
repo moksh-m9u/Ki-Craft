@@ -80,6 +80,18 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 **Repetition penalty.** A sampling setting above 1.0 that makes a token less likely once it has appeared, which stops small models looping on the same line.
 
+## Database
+
+**Postgres and pgvector.** Postgres is a relational database: tables of rows with typed columns, queried with SQL. pgvector is an extension that adds a `vector(n)` column type and distance operators, so the same database stores chunks and searches their embeddings. Here `<=>` (cosine distance) ranks chunks, matching the Chroma collection. `src/db/schema.py`.
+
+**SQLAlchemy Core.** The part of SQLAlchemy that describes tables as Python `Table` objects and builds SQL from them, without the ORM's classes and sessions. Queries stay close to the SQL they produce. `src/db/schema.py`.
+
+**Migration (Alembic).** A versioned script that changes the database schema, kept in git like code. Alembic records the applied version in an `alembic_version` table; `alembic upgrade head` runs the scripts not yet applied, `downgrade` runs their `downgrade()` to undo them, and `alembic check` compares the database with the tables in `src/db/schema.py`. `migrations/`.
+
+**Connection pooler.** A server between clients and Postgres that lets many clients share a few database connections, because each Postgres connection costs memory. Neon's pooler (PgBouncer, the host with `-pooler`) works per transaction, so session features such as prepared statements do not carry over; migrations and bulk copies use the direct host instead. `DATABASE_URL` and `DATABASE_URL_DIRECT`.
+
+**Neon branch.** A copy of a Neon database that shares storage with its parent until either changes, so it is created instantly. Here `dev` is where migrations and the Chroma copy are tried; `production` is what the deployed API reads.
+
 ## API and serving
 
 **Lifespan.** The FastAPI hook that runs code once when the server starts and once when it stops. Here it loads the embedding client and the vector store a single time instead of per request. `api/main.py`.

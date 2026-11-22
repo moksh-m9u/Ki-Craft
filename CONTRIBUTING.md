@@ -11,6 +11,7 @@ This guide sets up the project for development: installing it, running each part
 - [Running the API](#running-the-api)
 - [Running the dashboard](#running-the-dashboard)
 - [Tests](#tests)
+- [Database migrations](#database-migrations)
 - [Ingesting a new PDF](#ingesting-a-new-pdf)
 - [Running with Docker](#running-with-docker)
 - [Configuration](#configuration)
@@ -94,6 +95,8 @@ cp .env.example .env
 | `WATSONX_API_KEY` | Embedding every question, and every chunk at ingestion | An IBM Cloud API key |
 | `WATSONX_PROJECT_ID` | Same | The id of your watsonx.ai project |
 | `WATSONX_URL` | Same | Region endpoint; defaults to `https://eu-de.ml.cloud.ibm.com` |
+| `DATABASE_URL` | Postgres (Neon), pooled | From the branch's Connect dialog with connection pooling on; the host contains `-pooler` |
+| `DATABASE_URL_DIRECT` | Migrations and bulk copies | The same string with `-pooler` removed from the host |
 | `HF_TOKEN` | Ingestion only (chunk summaries) | Create one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) |
 | `API_BASE_URL` | Dashboard | Where the dashboard finds the API; defaults to `http://localhost:8000` |
 | `CORS_ALLOWED_ORIGINS` | API | Comma-separated origins allowed to call the API from a browser |
@@ -218,6 +221,24 @@ Run one file or one test:
 ```bash
 python -m pytest -q -p no:cacheprovider tests/test_embed.py
 ```
+
+## Database migrations
+
+The Postgres tables are described in `src/db/schema.py` and created by the Alembic migrations in `migrations/versions/`. Alembic connects with `DATABASE_URL_DIRECT`. Use the Neon `dev` branch while developing; `production` is what the deployed API reads.
+
+```bash
+alembic upgrade head
+```
+
+```bash
+alembic current
+```
+
+```bash
+alembic check
+```
+
+`alembic check` reports any difference between `schema.py` and the database. A schema change is a new migration: edit `schema.py`, generate a draft with `alembic revision --autogenerate -m "what changed"`, read and correct it, and run `upgrade`. `alembic downgrade -1` undoes the latest one.
 
 ## Ingesting a new PDF
 
@@ -368,6 +389,7 @@ config/
 src/
   embed.py               the one embedding factory (watsonx Granite)
   llm.py                 the one chat model factory: catalogue entry -> LangChain client
+  db/schema.py           Postgres tables: documents, chunks (vector(768)), images
   documents.py           turns stored chunk metadata back into text, tables, figures
   browse.py              lists the stored documents and a document's chunks in order
   tables.py              stored HTML tables -> Markdown for prompts
@@ -399,6 +421,7 @@ app/
   api_client.py          the only place the UI talks to the backend
   rag_eval_dashboard.py  Streamlit viewer for evaluation results
   requirements.txt       the dashboard's packages (used by Streamlit Community Cloud)
+migrations/              Alembic migrations that create the Postgres tables (alembic.ini at the root)
 scripts/                 command-line ingestion (scripts/ingest.py)
 dbv2/                    the built Chroma store and the figure images
 json/                    per-document chunk exports used by the dashboard

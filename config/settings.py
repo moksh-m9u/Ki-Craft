@@ -66,6 +66,13 @@ IMAGES_DIR: str = "dbv2/images"
 # One chunk export per ingested document, <source>.json.
 JSON_EXPORT_DIR: str = "json"
 
+# Postgres (Neon). Both point at the same database. The API uses the pooled
+# string (host ends in -pooler), which shares a few server connections among
+# many clients. Migrations and bulk copies use the direct one, because they
+# hold one long session that a transaction pooler would split. Empty until set.
+DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+DATABASE_URL_DIRECT: str = os.getenv("DATABASE_URL_DIRECT", "")
+
 # Retrieval settings
 # How the vector store picks chunks for a question. These are the three
 # search types LangChain's ``as_retriever`` accepts:
