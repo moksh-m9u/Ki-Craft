@@ -122,7 +122,7 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 **502 Bad Gateway.** The server was acting for another server (here the model provider) and did not get a usable answer from it: the provider raised an error, or it returned no answer text. It tells the caller our service is fine but the upstream failed, so retrying later, or with another model, may work.
 
-**503 Service Unavailable.** The server cannot handle requests right now. Here: the vector store could not be loaded. Uptime probes such as Railway's health check treat it as "not healthy".
+**503 Service Unavailable.** The server cannot handle requests right now. Here: the vector store could not be loaded. Uptime probes such as Render's health check treat it as "not healthy".
 
 **Exception handler.** A function registered with `@app.exception_handler(SomeError)` in `api/main.py`. When a route raises that error and nothing catches it, FastAPI calls the handler, which turns it into a response. Routes can then just raise, and the mapping from error to status code lives in one place.
 

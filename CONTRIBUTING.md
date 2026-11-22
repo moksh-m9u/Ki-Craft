@@ -108,7 +108,7 @@ Each place the code runs installs its own list, so the API image and the hosted 
 | Where it runs | What runs there | Installed from |
 |---|---|---|
 | Your machine | everything: API, dashboard, ingestion, tests | `pyproject.toml`, pinned by `uv.lock` (`uv sync`) |
-| Docker image (Railway) | the API only | `api/requirements.txt` |
+| Docker image (Render) | the API only | `api/requirements.txt` |
 | Streamlit Community Cloud | the dashboard only | `app/requirements.txt` |
 
 Every package goes in `pyproject.toml`. One the API imports also goes in `api/requirements.txt`, and one the dashboard imports also goes in `app/requirements.txt`; ingestion and test packages stay in `pyproject.toml` only (tests in its `dev` group). Then update the lock file and the environment, and commit `pyproject.toml` with `uv.lock`:
@@ -305,7 +305,7 @@ Uploading a PDF through the API, with a hosted parser in production, is the goal
 
 ## Running with Docker
 
-The image contains only the backend code and the pre-built store (`api/`, `src/`, `config/`, `dbv2/`), and installs only `api/requirements.txt`. It is about 1.17 GB and holds no secrets; credentials are passed at run time. Railway builds this same `Dockerfile` and sets `PORT` itself.
+The image contains only the backend code and the pre-built store (`api/`, `src/`, `config/`, `dbv2/`), and installs only `api/requirements.txt`. It is about 1.17 GB and holds no secrets; credentials are passed at run time. Render runs this image and sets `PORT` itself.
 
 Build:
 

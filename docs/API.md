@@ -11,7 +11,7 @@ supporting evidence: the exact document chunks, their tables, and their figures.
 
 - Interactive docs: `GET /docs` (Swagger UI) — try every endpoint in the browser.
 - Base URL: `http://localhost:8000` locally. In production, use the deployed URL
-  (e.g. `https://your-app.up.railway.app`). Everything below is relative to it.
+  (e.g. `https://your-app.onrender.com`). Everything below is relative to it.
 - Versioning: every endpoint is under `/v1` except `/` and `/health`, which stay
   unversioned so uptime probes keep a fixed URL. A breaking change would go to
   `/v2` while `/v1` keeps working. The old unprefixed paths (`/query`,

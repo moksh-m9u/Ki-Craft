@@ -273,7 +273,7 @@ The default and custom-provider paths are one function that receives an LLM obje
 
 The API key in the `llm` object travels in the request body over HTTPS. It must never be logged or stored, and it must never appear in traces. Enforced 2026-11-16: the field is a Pydantic `SecretStr`, 422 bodies do not echo rejected values, and offline tests check that the key reaches neither the logs nor the trace runs of a real `ChatOpenAI` client.
 
-**Decided (2026-11-13): a `/v1` prefix** on every endpoint except `/` and `/health`. It lets the API change later (`/v2`) without breaking clients, at the cost of slightly longer URLs. Health stays unversioned because uptime probes and Railway's health check should not break when the API version changes.
+**Decided (2026-11-13): a `/v1` prefix** on every endpoint except `/` and `/health`. It lets the API change later (`/v2`) without breaking clients, at the cost of slightly longer URLs. Health stays unversioned because uptime probes and Render's health check should not break when the API version changes.
 
 ### Planned endpoints
 
@@ -390,8 +390,9 @@ Hosting options:
 
 | Option | Strengths | Weaknesses |
 |---|---|---|
-| Railway Postgres (chosen, tentative) | Same platform as the API; private networking | pgvector must be enabled (use the pgvector template image); backups need setting up |
-| Neon | Serverless Postgres, pgvector built in, point-in-time restore, branching (a throwaway copy of the database per test), generous free tier | Cold start of a second or so on the free tier after idle |
+| Railway Postgres (not pursued) | Same platform as the API would have been; private networking | The API runs on Render, so no private network; the free offer is a one-month trial; pgvector needs the template image |
+| Render Postgres (not pursued) | Same platform as the API; internal network, no public hop | The free database expires after a short period; paid plans for a lasting one |
+| Neon (chosen) | Serverless Postgres, pgvector built in, point-in-time restore, branching (a throwaway copy of the database per test), generous free tier | Cold start of a second or so on the free tier after idle |
 | Supabase | Postgres plus pgvector plus auth and file storage (useful for uploaded PDFs and later users) | More platform than we need now; free projects pause after a week idle |
 
 Migrations with Alembic so the schema is versioned in git. Use SQLAlchemy Core or a thin repository module, not a heavy ORM, so queries stay readable.
@@ -400,7 +401,9 @@ Migrations with Alembic so the schema is versioned in git. Use SQLAlchemy Core o
 
 **Owner (2026-11-13):** Railway Postgres, tentatively, because the API is planned for Railway too. Hosting as a whole is still open and will be discussed before Checkpoint 6.
 
-**Status:** Checkpoint 6. Host tentatively Railway Postgres.
+**Owner (2026-11-22):** Neon. The API is on Render, not Railway, so Railway's private networking no longer applies, and Neon's free plan lasts while Railway's is a one-month trial. Put the Neon project in the same region as the Render service, and use the pooled connection string (prepared statements off with psycopg 3).
+
+**Status:** Checkpoint 6. Host: Neon.
 
 ## 11. Semantic cache and router
 
@@ -429,7 +432,7 @@ LangSmith is good for inspecting single requests. It does not replace an evaluat
 
 ## 13. Deployment
 
-**Today:** a Docker image on Railway with the Chroma store copied in at build time. The Railway service is currently down. Streamlit Cloud hosts the UI.
+**Today:** a Docker image on Render with the Chroma store copied in at build time (it was on Railway until 2026-11). Streamlit Cloud hosts the UI. After Checkpoint 6 the database is on Neon.
 
 Until 2026-11-13 the image also installed CPU torch, transformers, and the OpenCV system libraries. They were left over from the local embedding model. Embeddings are now a watsonx.ai API call and nothing in the backend imports any of them, so they were removed.
 
@@ -438,7 +441,7 @@ After the migration the API container becomes stateless: vectors and data live i
 | Option for figure images and uploaded PDFs | Strengths | Weaknesses |
 |---|---|---|
 | Baked into the image (current, for the fixed corpus) | Simple, reproducible | New uploads cannot be stored |
-| Railway volume | Uploads persist | Single replica; redeploy downtime |
+| Persistent disk (Render or Railway) | Uploads persist | Single replica; redeploy downtime |
 | Object storage (S3, Cloudflare R2, Supabase Storage) | Stateless API; any number of replicas | One more service and credentials |
 
 ### Where figure images live: files, not database rows
@@ -467,7 +470,7 @@ Clients never notice any of these changes.
 - Removed torch, transformers, and the OpenCV system libraries (Checkpoint 1, done).
 - `.dockerignore` is an allowlist, so the image holds only `api/`, `src/`, `config/`, and `dbv2/`; 1.34 GB down to 1.17 GB (Checkpoint 1, done).
 - Decide image and PDF storage with uploads (Checkpoint 7).
-- Restore Railway (Checkpoint 9).
+- Set the database variables on Render (Checkpoint 9).
 
 ## 14. Testing and evaluation
 
@@ -497,7 +500,7 @@ Out of scope for this phase. The current flow is a straight line (retrieve, then
 
 ## Open decisions
 
-1. Database host: tentatively Railway Postgres; hosting as a whole still to discuss (Checkpoint 6).
+1. Database host: decided 2026-11-22, Neon (section 10).
 2. Summarizer for new uploads: research a hosted multimodal model, a local vision model, and multi-vector embeddings (section 3, Checkpoint 7).
 3. Hosted Parse profile, `balanced` or `best`, measured on the evaluation set (section 1, Checkpoint 7).
 4. Storage for uploaded PDFs and figure images: a volume or object storage (Checkpoint 7).
