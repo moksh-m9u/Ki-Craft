@@ -50,7 +50,7 @@ answer. Every error body has the same shape: `{"detail": "..."}`.
 | `422` | The body is invalid (FastAPI's own check, `detail` is a list of `{type, loc, msg}`; the rejected value is never echoed, so an `llm.api_key` cannot come back in it), or `llm` named a provider or model that is not in the catalogue | `"Model gpt-9 not found for provider openai"` |
 | `500` | Unexpected server error; the real message is only in the server log | `"Internal server error"` |
 | `502` | The model provider failed (bad key, quota, timeout), or it returned no answer text | `"The model provider failed: ..."`, or `"The model used its whole output budget (512 tokens, reasoning included) before writing any answer text. Raise max_tokens and try again."` |
-| `503` | The vector store could not be loaded | `"Vector store unavailable: ..."` |
+| `503` | The database could not be reached | `"Database unavailable: ..."` |
 
 `/health` returns 503 with its usual body (`status: "error"` plus `detail`),
 so an uptime probe can rely on the status code alone.
@@ -186,7 +186,7 @@ minus `answer`, `answer_characters` and `figures`):
 | `enhanced_content` | string | Markdown text. Render with a markdown parser (it uses `**bold**`, headings, lists). This is the search-friendly summary. |
 | `raw_text` | string | Plain OCR text from the PDF. Use for a "raw source" toggle. |
 | `tables_html` | string[] | Each entry is a full `<table>...</table>` HTML string. Inject as HTML (sanitise first) or parse into your own table component. |
-| `record_id` | string \| null | The chunk's id in the vector store. Stable, and part of its image URLs. |
+| `record_id` | string \| null | The chunk's id in the database. Stable, and part of its image URLs. |
 | `image_urls` | string[] | Relative HTTP path of each figure. **Prefix with the base URL** (see §5). |
 | `has_table` / `has_image` | boolean | Quick flags to skip rendering empty sections. |
 | `source` | string \| null | Source filename, if the chunk knows it. |
@@ -379,7 +379,7 @@ can load them.
 ## 6. Dependencies & gotchas (read this)
 
 - **Image URLs are stable.** Every chunk's `image_urls` is
-  `/v1/images/{record_id}/{position}`: the chunk's id in the vector store (also
+  `/v1/images/{record_id}/{position}`: the chunk's id in the database (also
   returned as the chunk's `record_id`) and the figure's 0-based position
   **within that chunk**. The same figure has the same URL in every response,
   after a restart and on any server, so you can store it or cache it. Take each

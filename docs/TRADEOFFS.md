@@ -15,9 +15,9 @@ A chosen option is not frozen. When an agent works on that area it should still 
 
 ## The system in one paragraph
 
-Ingestion is offline. A PDF is partitioned into elements (text, tables, images) by `unstructured`. The elements are grouped into chunks by section title, and a vision LLM writes one searchable summary per chunk. Only the summary is embedded (IBM watsonx Granite, 768 dimensions) and stored in Chroma. The original text, the tables (as HTML), and the image paths ride along as metadata.
+Ingestion is offline. A PDF is partitioned into elements (text, tables, images) by `unstructured`. The elements are grouped into chunks by section title, and a vision LLM writes one searchable summary per chunk. Only the summary is embedded (IBM watsonx Granite, 768 dimensions) and stored in Postgres with pgvector (Chroma until 2026-11-23). The original text, the tables (as HTML) and the figure paths are stored in the same rows; the figure files stay on disk.
 
-At query time the question is embedded and Chroma returns 5 diverse chunks (MMR over 20 candidates). The original text, tables, and images are rebuilt from metadata and sent to Gemini as a multimodal prompt. FastAPI serves this as `/v1/retrieve`, `/v1/query` (an optional `llm` object picks the model), and `/v1/query/stream` (SSE), and Streamlit is the UI.
+At query time the question is embedded and pgvector returns 5 diverse chunks (MMR over the 20 nearest by cosine distance). The original text, tables, and images are read back with them and sent to Gemini as a multimodal prompt. FastAPI serves this as `/v1/retrieve`, `/v1/query` (an optional `llm` object picks the model), and `/v1/query/stream` (SSE), and Streamlit is the UI.
 
 The central design idea is **index the summary, answer from the original**. Summaries are good for matching questions. Originals are good for exact numbers.
 
@@ -156,13 +156,13 @@ A known weakness of every dense embedder: part numbers (`LM2596S-5.0`) and exact
 
 **Decided (2026-11-12): Postgres + pgvector**, replacing Chroma and also holding application data.
 
-**Today:** Chroma, persisted as files in `dbv2/chroma_db`, cosine HNSW. It is baked into the Docker image at build time.
+**Today (2026-11-23):** Postgres with pgvector on Neon. The API and ingestion read and write only Postgres; the Chroma files in `dbv2/chroma_db` remain only until the `production` branch is filled from them, then they are deleted.
 
 | Option | Strengths | Weaknesses |
 |---|---|---|
-| Chroma embedded (current) | Zero ops; one directory; perfect for a read-only demo corpus | No concurrent writers; the store lives inside the container, so uploads are lost on redeploy; no joins with application data |
+| Chroma embedded (until 2026-11-23) | Zero ops; one directory; perfect for a read-only demo corpus | No concurrent writers; the store lives inside the container, so uploads are lost on redeploy; no joins with application data |
 | Chroma on a Railway volume | Uploads survive redeploys | Volumes force one replica and cause downtime on redeploy; still no relational data |
-| Postgres + pgvector (chosen) | One database for vectors and application data; SQL joins ("chunks of documents this user uploaded"); transactions; full-text search for hybrid retrieval; HNSW up to 2,000 dimensions; managed backups | You manage indexes and migrations; slightly more setup |
+| Postgres + pgvector (chosen, in use) | One database for vectors and application data; SQL joins ("chunks of documents this user uploaded"); transactions; full-text search for hybrid retrieval; HNSW up to 2,000 dimensions; managed backups | You manage indexes and migrations; slightly more setup |
 | Qdrant, Weaviate, Pinecone | Built for vectors: filtering, quantization, scale | A second database next to Postgres anyway; vendor or ops cost |
 
 The deciding factor is the upload feature. Once users upload documents, we need document records, job status, chat history, the cache, and later users. That is relational data, and it must live in a real database anyway. With pgvector the chunks live in the same database, so deleting a document deletes its vectors in one transaction, and hybrid search is a single SQL query. At our scale (thousands of chunks, not hundreds of millions) pgvector's performance is not a concern.
@@ -178,8 +178,9 @@ Each Chroma record already holds everything a pgvector row needs:
 | `embedding` (768 floats) | `chunks.embedding vector(768)` |
 | `metadata.raw_text`, `metadata.tables_html` | `chunks.raw_text`, `chunks.tables_html` |
 | `metadata.image_paths` | one row per path in `images` |
-| `metadata.chunk_id`, `has_table`, `has_image` | `chunks` columns (the flags can become computed) |
-| `metadata.source` | `documents.name`, referenced by `chunks.document_id` |
+| `metadata.chunk_id` | `chunks.chunk_id` |
+| `has_table`, `has_image` | not stored; worked out from `tables_html` and `images` |
+| `metadata.source` | `documents.source`, referenced by `chunks.document_id` |
 
 So the migration is a one-off copy: `collection.get(include=["documents", "embeddings", "metadatas"])` and a bulk insert. It needs **no summarizer and no embedding calls**, because the embedding model stays the same. Figure JPEGs stay on disk under `dbv2/images` and are referenced by path.
 
@@ -191,11 +192,15 @@ What would force real re-work:
 - **Changing chunk boundaries** (a different chunk size, or page-level chunks) means new chunks, so new summaries. This is the only case that needs the summarizer for the existing corpus.
 - **Adding page numbers and bounding boxes** to existing chunks needs re-extraction with `unstructured`. If chunk boundaries stay the same, the old summaries can be reused.
 
-Verification: run the evaluation set against Chroma and against pgvector. Identical vectors and the same distance metric (cosine) should give the same top-k, apart from approximate-search tie-breaks.
+Verification, done 2026-11-23:
 
-**How to defend it:** "Chroma was right for a fixed corpus baked into an image. Uploads turn this into a multi-document, stateful system, and keeping vectors next to the document records in Postgres removes a whole class of consistency bugs. Because summaries and embeddings are stored artifacts, the migration was a data copy, not a rebuild, and I proved it with the evaluation set."
+- `scripts/chroma_to_postgres.py` read every row back after the copy: ids, text, tables, figure paths and embeddings were identical, bit for bit.
+- `scripts/compare_search.py` sent the 76 golden-set questions to both stores with the same question embedding. The final 5 after MMR matched on all 76, in order; the nearest 20 matched on 75, and the 76th had two chunks at exactly the same distance at ranks 20 and 21. Postgres breaks such ties by record id.
+- One real difference was found and fixed on the way: LangChain's Chroma returns MMR's picks in nearest-first order, not in the order MMR picks them. That order decides the `C1`..`C5` labels and which figures fit the image cap, so `search_postgres` sorts the same way.
 
-**Status:** Checkpoint 6. The host is still to decide.
+**How to defend it:** "Chroma was right for a fixed corpus baked into an image. Uploads turn this into a multi-document, stateful system, and keeping vectors next to the document records in Postgres removes a whole class of consistency bugs. Because summaries and embeddings are stored artifacts, the migration was a data copy, not a rebuild, and I proved it by comparing what both stores return for the same 76 questions."
+
+**Status:** Checkpoint 6, nearly done: reads and ingestion run on Postgres (Neon `dev`). Left: fill the `production` branch, then delete Chroma.
 
 ## 6. Retrieval
 
@@ -432,7 +437,7 @@ LangSmith is good for inspecting single requests. It does not replace an evaluat
 
 ## 13. Deployment
 
-**Today:** a Docker image on Render with the Chroma store copied in at build time (it was on Railway until 2026-11). Streamlit Cloud hosts the UI. After Checkpoint 6 the database is on Neon.
+**Today:** a Docker image on Render (on Railway until 2026-11) holding the API code and the figure files in `dbv2/images`. The data lives in Postgres on Neon, reached with `DATABASE_URL`. Streamlit Cloud hosts the UI.
 
 Until 2026-11-13 the image also installed CPU torch, transformers, and the OpenCV system libraries. They were left over from the local embedding model. Embeddings are now a watsonx.ai API call and nothing in the backend imports any of them, so they were removed.
 
@@ -469,7 +474,7 @@ Clients never notice any of these changes.
 **Status:**
 - Removed torch, transformers, and the OpenCV system libraries (Checkpoint 1, done).
 - `.dockerignore` is an allowlist, so the image holds only `api/`, `src/`, `config/`, and `dbv2/`; 1.34 GB down to 1.17 GB (Checkpoint 1, done).
-- Decide image and PDF storage with uploads (Checkpoint 7).
+- Decide image and PDF storage with uploads (Checkpoint 7). Owner asked on 2026-11-23 whether figures should move into Postgres; the answer recorded here stands: bytes go to object storage (Cloudflare R2, S3 or Supabase Storage) when uploads arrive, `images.path` becomes a storage key, and the database never holds the bytes. Until then the shipped figures stay in `dbv2/images`, baked into the image.
 - Set the database variables on Render (Checkpoint 9).
 
 ## 14. Testing and evaluation

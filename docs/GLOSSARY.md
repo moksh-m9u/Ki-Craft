@@ -6,9 +6,9 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 **Embedding.** A list of numbers (here 768) that represents the meaning of a piece of text. Texts with similar meaning get vectors that point in similar directions. Here: `src/embed.py`, watsonx Granite.
 
-**Cosine similarity.** How close two embeddings are, measured by the angle between them: 1 means the same direction, 0 means unrelated. Chroma and pgvector both rank chunks by it here.
+**Cosine similarity.** How close two embeddings are, measured by the angle between them: 1 means the same direction, 0 means unrelated. pgvector ranks chunks by it here (`<=>` is cosine distance, 1 minus the similarity), as Chroma did before.
 
-**Vector store.** A database that stores embeddings and finds the nearest ones to a query embedding. Here: Chroma today, Postgres with pgvector after Checkpoint 6.
+**Vector store.** A database that stores embeddings and finds the nearest ones to a query embedding. Here: Postgres with pgvector (Chroma until 2026-11-23).
 
 **HNSW (Hierarchical Navigable Small World).** The index that makes nearest-neighbour search fast. It builds a layered graph of vectors and walks it towards the query instead of comparing against every vector. The result is approximate but very close to exact. Chroma and pgvector both use it.
 
@@ -90,11 +90,19 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 **Connection pooler.** A server between clients and Postgres that lets many clients share a few database connections, because each Postgres connection costs memory. Neon's pooler (PgBouncer, the host with `-pooler`) works per transaction, so session features such as prepared statements do not carry over; migrations and bulk copies use the direct host instead. `DATABASE_URL` and `DATABASE_URL_DIRECT`.
 
-**Neon branch.** A copy of a Neon database that shares storage with its parent until either changes, so it is created instantly. Here `dev` is where migrations and the Chroma copy are tried; `production` is what the deployed API reads.
+**Engine (connection pool).** SQLAlchemy's object for one database: it opens connections when code asks for one, keeps a few open for reuse, and hands them out again, so a request does not pay for a new TLS connection each time. Created once per process (`src/db/connection.py:create_db_engine`).
+
+**Transaction.** A group of SQL statements that succeed or fail together: `COMMIT` keeps all of them, `ROLLBACK` (or any error) keeps none. `engine.begin()` opens one and commits when its block ends. Ingestion replaces a document inside one, so a failure never leaves half a document.
+
+**Foreign key and ON DELETE CASCADE.** A foreign key says a column must hold the id of a row in another table (`chunks.document_id` points at `documents.id`). `ON DELETE CASCADE` makes deleting that row also delete the rows that point at it, so deleting a document removes its chunks and their figure rows.
+
+**Prepared statement.** A query the server parses once and runs many times. psycopg 3 prepares repeated queries automatically, but a transaction pooler such as PgBouncer may run the next transaction on another server connection that never saw it, so `create_db_engine` turns this off (`prepare_threshold=None`).
+
+**Neon branch.** A copy of a Neon database that shares storage with its parent until either changes, so it is created instantly. Here `dev` is where migrations, the Chroma copy and ingestion changes are tried; `production` is what the deployed API reads.
 
 ## API and serving
 
-**Lifespan.** The FastAPI hook that runs code once when the server starts and once when it stops. Here it loads the embedding client and the vector store a single time instead of per request. `api/main.py`.
+**Lifespan.** The FastAPI hook that runs code once when the server starts and once when it stops. Here it builds the embedding client and the database engine a single time instead of per request. `api/main.py`.
 
 **Router (`APIRouter`).** A FastAPI object that collects endpoints in a module that does not have the app. `@router.get(...)` only records a route; `app.include_router(router)` copies the routes into the app, adding the router's `prefix` and `tags`. Here: one router per file in `api/routers/`.
 
@@ -106,7 +114,7 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 **Pagination (offset and limit).** Returning a long list in pages. The client sends `offset` (how many items to skip) and `limit` (how many to return), and the response says `total`, so the client knows when it has everything. A page past the end is simply empty. The alternative, cursor pagination, hands back an opaque "continue from here" token instead; it suits huge or fast-changing lists, where an offset can skip or repeat items when rows are inserted. Here a document's chunks are few and change only on re-ingestion, so offset and limit are enough. `GET /v1/documents/{document_id}/chunks`.
 
-**Record id.** The id Chroma gives each stored chunk when it is added, a random UUID such as `004ca22b-a528-444e-9c0e-27c8b5858ff5`. It never changes while the record exists, so figure URLs contain it (`/v1/images/{record_id}/{position}`), and it will become the chunk's primary key in Postgres. Not the same as `chunk_id`, which is only the chunk's position in one response.
+**Record id.** The id each stored chunk gets when it is stored (first by Chroma, now by ingestion), kept as `chunks.id` in Postgres, a random UUID such as `004ca22b-a528-444e-9c0e-27c8b5858ff5`. It never changes while the record exists, so figure URLs contain it (`/v1/images/{record_id}/{position}`), and it will become the chunk's primary key in Postgres. Not the same as `chunk_id`, which is only the chunk's position in one response.
 
 **Path traversal.** An attack where a request smuggles `..` or an absolute path into something the server turns into a file path, to read files outside the intended folder. The image route avoids it twice: the URL names a record, not a file, and the stored path must still resolve inside `IMAGES_DIR` (`src/documents.py:image_file`).
 
@@ -134,7 +142,7 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 **502 Bad Gateway.** The server was acting for another server (here the model provider) and did not get a usable answer from it: the provider raised an error, or it returned no answer text. It tells the caller our service is fine but the upstream failed, so retrying later, or with another model, may work.
 
-**503 Service Unavailable.** The server cannot handle requests right now. Here: the vector store could not be loaded. Uptime probes such as Render's health check treat it as "not healthy".
+**503 Service Unavailable.** The server cannot handle requests right now. Here: the database could not be reached. Uptime probes such as Render's health check treat it as "not healthy".
 
 **Exception handler.** A function registered with `@app.exception_handler(SomeError)` in `api/main.py`. When a route raises that error and nothing catches it, FastAPI calls the handler, which turns it into a response. Routes can then just raise, and the mapping from error to status code lives in one place.
 
@@ -182,7 +190,7 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 **Environment file (`--env-file`).** A file of `NAME=value` lines that `docker run` turns into environment variables in the container. Docker takes each line literally, so quotes become part of the value. It keeps secrets out of the image, which anyone who can pull the image could otherwise read.
 
-**Volume.** A folder that lives outside the container's own filesystem and survives when the container is removed. Not used here yet; the Chroma store is baked into the image instead.
+**Volume.** A folder that lives outside the container's own filesystem and survives when the container is removed. Not used here: the data lives in Postgres on Neon, and the figure files are baked into the image.
 
 **Multi-stage build.** A Dockerfile with several `FROM` lines. An early stage holds compilers and build tools, and the final stage copies only the finished result out of it, so the tools never reach the shipped image.
 
@@ -190,7 +198,7 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 **Fixture.** A pytest function that prepares something a test needs and cleans it up afterwards. A test asks for it by naming it as an argument. Here `backend` and `client` in `tests/api/conftest.py`.
 
-**Monkeypatch.** pytest's built-in fixture for temporarily replacing an attribute, such as a function inside a module, for one test. It puts the original back when the test ends. Here it swaps the Chroma loader and the LLM builders for fakes.
+**Monkeypatch.** pytest's built-in fixture for temporarily replacing an attribute, such as a function inside a module, for one test. It puts the original back when the test ends. Here it swaps the database reads, the embedding client and the LLM builders for fakes.
 
 **Fake (test double).** A small stand-in object that behaves like the real dependency for the few methods the code calls. `_FakeStore` has only `as_retriever`, and `_FakeLLM` has only `stream`.
 
