@@ -10,7 +10,7 @@ keeps a few open for reuse, and is created once per process.
 
 from __future__ import annotations
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, text
 
 
 def sqlalchemy_url(url: str, name: str = "DATABASE_URL") -> str:
@@ -62,3 +62,16 @@ def create_db_engine(url: str, name: str = "DATABASE_URL") -> Engine:
         pool_pre_ping=True,
         connect_args={"prepare_threshold": None},
     )
+
+
+def ping(engine: Engine) -> None:
+    """Run ``SELECT 1``, so a wrong URL or an unreachable database fails at startup.
+
+    The first query after Neon has scaled to zero also wakes it, which takes
+    about a second.
+
+    Raises:
+        sqlalchemy.exc.OperationalError: If the database cannot be reached.
+    """
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))

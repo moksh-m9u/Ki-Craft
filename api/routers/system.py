@@ -29,7 +29,7 @@ def root(request: Request) -> dict:
             "GET /v1/documents": "List the indexed documents with their chunk, figure and table counts",
             "GET /v1/documents/{document_id}/chunks": "One page of a document's chunks, in reading order",
             "GET /v1/images/{record_id}/{position}": "Fetch one figure of a stored chunk (stable URL)",
-            "GET /health": "Service health / vector store status",
+            "GET /health": "Service health / database status",
         },
     }
 
@@ -38,18 +38,18 @@ def root(request: Request) -> dict:
     "/health",
     summary="Health check",
     description=(
-        "Returns 200 when the vector store is loaded and 503 when it cannot be. "
+        "Returns 200 when the database answers and 503 when it does not. "
         "The first call may take a few seconds while the store loads."
     ),
     response_description="The service is ready.",
-    responses={503: {"description": "The vector store could not be loaded."}},
+    responses={503: {"description": "The database could not be reached."}},
 )
 async def health(request: Request):
-    """Report whether the vector store is loadable in this runtime.
+    """Report whether the database can be reached from this runtime.
 
     Returns 200 when it is and 503 when it is not, so an uptime probe can
     read the status code alone. The first call may take a few seconds while
-    the embedding model and the Chroma store load into memory.
+    the embedding client is built and the database answers a ``SELECT 1``.
     """
     try:
         await request.app.state.service.ensure_ready()

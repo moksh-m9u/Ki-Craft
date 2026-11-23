@@ -14,8 +14,9 @@ Functions:
 * :func:`chunk_text_and_tables` - text and tables, no figure read.
 * :func:`stored_image_paths`, :func:`stored_image_count` - which figures a
   chunk has, without reading them.
-* :func:`image_file` - the file behind one figure, kept inside ``IMAGES_DIR``;
-  the image endpoint and the model prompt both find figures through it.
+* :func:`image_file`, :func:`figure_file` - the file behind one figure, kept
+  inside ``IMAGES_DIR``; the model prompt and the image endpoint both find
+  figures through :func:`figure_file`.
 """
 
 from __future__ import annotations
@@ -131,25 +132,38 @@ def stored_image_paths(metadata: dict) -> list[str]:
 
 
 def image_file(metadata: dict, position: int) -> Path | None:
-    """Find the file of one figure, as ``/v1/images/{record_id}/{position}`` names it.
-
-    The path comes from the record's metadata and must resolve to a file inside
-    ``IMAGES_DIR``; anything else is treated as missing.
+    """Find the file of one of a retrieved chunk's figures, for the model prompt.
 
     Args:
-        metadata: The record's metadata, as Chroma stores it.
-        position: 0-based index into the record's ``image_paths``.
+        metadata: The chunk's metadata, with ``image_paths``.
+        position: 0-based index into ``image_paths``.
 
     Returns:
         The absolute path of the figure, or None when the position is out of
-        range, the path points outside ``IMAGES_DIR``, or the file is missing.
+        range or :func:`figure_file` rejects the path.
     """
     paths = stored_image_paths(metadata)
     if not 0 <= position < len(paths):
         return None
+    return figure_file(paths[position])
+
+
+def figure_file(stored_path: str) -> Path | None:
+    """Resolve a stored figure path to its file, only if it lies inside ``IMAGES_DIR``.
+
+    The image endpoint and the prompt both go through here, so a stored path
+    that climbs out of the images folder (``../``) is never read or served.
+
+    Args:
+        stored_path: A path as ingestion stored it, relative to the repository root.
+
+    Returns:
+        The absolute path, or None when it points outside ``IMAGES_DIR`` or the
+        file is missing.
+    """
     images_root = (_PROJECT_ROOT / IMAGES_DIR).resolve()
-    full_path = (_PROJECT_ROOT / paths[position]).resolve()
+    full_path = (_PROJECT_ROOT / stored_path).resolve()
     if not full_path.is_relative_to(images_root) or not full_path.is_file():
-        logger.warning("Stored figure path is outside %s or missing: %s", IMAGES_DIR, paths[position])
+        logger.warning("Stored figure path is outside %s or missing: %s", IMAGES_DIR, stored_path)
         return None
     return full_path

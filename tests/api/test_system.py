@@ -40,7 +40,7 @@ def test_health_reports_store_failure_as_503(client, backend):
     response = client.get("/health")
     assert response.status_code == 503
     assert response.json()["status"] == "error"
-    assert response.json()["detail"] == "Vector store unavailable: store missing"
+    assert response.json()["detail"] == "Database unavailable: store missing"
 
 def test_unexpected_error_is_500_without_internals(backend, monkeypatch):
     """The caller sees a generic message; the real one stays in the server log."""

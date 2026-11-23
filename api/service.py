@@ -1,9 +1,11 @@
 """Backing service for the FastAPI endpoints.
 
-Wraps the existing retrieval stack (``src.retrieval``) behind a lazy-loaded,
-thread-safe service so endpoints stay thin.  All heavy work (embedding model
-load, Chroma load, LLM calls) runs in a worker thread via ``asyncio.to_thread``
-so FastAPI's event loop is never blocked.
+Wraps the retrieval stack (``src.retrieval``) and the corpus reads
+(``src/browse.py``) behind a lazy-loaded, thread-safe service so endpoints
+stay thin. It holds the two heavy objects, created once: the watsonx
+embedding client and the Postgres engine (a connection pool to Neon). All
+blocking work (SQL, embedding calls, LLM calls) runs in a worker thread via
+``asyncio.to_thread`` so FastAPI's event loop is never blocked.
 
 Every query, with the default model or a caller-chosen one, goes through
 ``stream_answer`` and so through the one generation path
@@ -23,18 +25,20 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from config.settings import (
     GENERATION_MAX_IMAGES,
     GENERATION_MODEL,
+    DATABASE_URL,
     GENERATION_PROVIDER,
     RETRIEVAL_K,
 )
-from src.browse import document_chunks, list_documents
-from src.documents import chunk_text_and_tables, image_file, stored_image_paths
+from src.browse import document_chunks, figure_path, list_documents
+from src.db.connection import create_db_engine, ping
+from src.documents import chunk_text_and_tables, figure_file, stored_image_paths
 from src.embed import load_embedding_model
 from src.llm import accepts_images, default_llm
 from src.logger import get_logger
 from src.retrieval.citations import find_citations
 from src.retrieval.generate import StreamEvent, answer_query_stream
 from src.retrieval.prompt import PromptFigure
-from src.retrieval.search import build_retriever, load_vector_store, retrieve_chunks
+from src.retrieval.search import PostgresRetriever, retrieve_chunks
 
 from api.schemas import (
     ChunkPage,
@@ -62,7 +66,7 @@ def _image_urls(chunk: Document) -> list[str]:
 
 
 class StoreUnavailableError(RuntimeError):
-    """The embedding client or the vector store could not be loaded.
+    """The embedding client or the database could not be loaded or reached.
 
     ``api/main.py`` maps it to HTTP 503: the service cannot answer right now,
     and ``/health`` reports the same.
@@ -70,44 +74,47 @@ class StoreUnavailableError(RuntimeError):
 
 
 class RAGService:
-    """Lazily loads the vector store and exposes retrieve/answer operations."""
+    """Lazily connects to the database and exposes retrieve, answer and browse operations."""
 
     def __init__(self) -> None:
-        """Create the service with nothing loaded; ``ensure_ready`` loads the store."""
-        self._db = None
-        self._retriever = None
+        """Create the service with nothing loaded; ``ensure_ready`` connects."""
+        self._engine = None
+        self._embedding = None
         self._load_lock = asyncio.Lock()
 
     async def ensure_ready(self) -> None:
-        """Load the vector store on first use (idempotent, thread-safe).
+        """Connect on first use (idempotent, thread-safe).
 
         Raises:
-            StoreUnavailableError: If the embedding client or the store fails
-                to load. The next call tries again.
+            StoreUnavailableError: If the embedding client cannot be built or
+                the database cannot be reached. The next call tries again.
         """
-        if self._db is None:
+        if self._engine is None:
             async with self._load_lock:
-                if self._db is None:
+                if self._engine is None:
                     try:
                         await asyncio.to_thread(self._load)
                     except Exception as exc:
-                        raise StoreUnavailableError(f"Vector store unavailable: {exc}") from exc
+                        raise StoreUnavailableError(f"Database unavailable: {exc}") from exc
 
     def _load(self) -> None:
-        """Load the embedding client, the vector store and the default retriever."""
-        logger.info("Loading embedding model and vector store...")
-        model = load_embedding_model()
-        self._db = load_vector_store(model)
-        self._retriever = build_retriever(self._db)
-        logger.info("Vector store ready.")
+        """Build the embedding client and the engine, and check the database answers."""
+        logger.info("Loading the embedding model and connecting to Postgres...")
+        embedding = load_embedding_model()
+        engine = create_db_engine(DATABASE_URL)
+        ping(engine)
+        self._embedding, self._engine = embedding, engine
+        logger.info("Postgres ready.")
 
-    def get_retriever(self, top_k: int | None = None):
-        """Return a retriever, honouring a per-request ``top_k`` override."""
-        if self._db is None:
-            raise RuntimeError("Vector store is not loaded")
-        if top_k and top_k != RETRIEVAL_K:
-            return build_retriever(self._db, top_k)
-        return self._retriever
+    def get_retriever(self, top_k: int | None = None) -> PostgresRetriever:
+        """Return a retriever for ``top_k`` chunks (``RETRIEVAL_K`` when not given).
+
+        A retriever only holds references to the engine and the embedding
+        client, so building one per request costs nothing.
+        """
+        if self._engine is None:
+            raise RuntimeError("The database is not connected")
+        return PostgresRetriever(self._engine, self._embedding, k=top_k or RETRIEVAL_K)
 
     async def retrieve(self, query: str, top_k: int) -> RetrieveResponse:
         """Retrieve chunks for a query without generating an answer."""
@@ -204,11 +211,11 @@ class RAGService:
     async def image(self, record_id: str, position: int) -> Path | None:
         """Find one figure of a stored record, for ``/v1/images/{record_id}/{position}``.
 
-        The file path is read from the record's metadata in the store, never
-        taken from the caller.
+        The file path is read from the ``images`` table, never taken from the
+        caller, and must lie inside ``IMAGES_DIR``.
 
         Args:
-            record_id: The Chroma record id (a UUID string).
+            record_id: The chunk's record id (a UUID string).
             position: 0-based index into the record's figures.
 
         Returns:
@@ -219,11 +226,8 @@ class RAGService:
             StoreUnavailableError: If the store cannot be loaded.
         """
         await self.ensure_ready()
-        found = await asyncio.to_thread(self._db.get, ids=[record_id], include=["metadatas"])
-        metadatas = found.get("metadatas") or []
-        if not metadatas:
-            return None
-        return image_file(metadatas[0] or {}, position)
+        stored = await asyncio.to_thread(figure_path, self._engine, record_id, position)
+        return figure_file(stored) if stored else None
 
     async def documents(self) -> DocumentList:
         """List every indexed document with its chunk, figure and table counts.
@@ -232,7 +236,7 @@ class RAGService:
             StoreUnavailableError: If the store cannot be loaded.
         """
         await self.ensure_ready()
-        summaries = await asyncio.to_thread(list_documents, self._db)
+        summaries = await asyncio.to_thread(list_documents, self._engine)
         items = [DocumentSummaryPayload(**vars(summary)) for summary in summaries]
         return DocumentList(items=items, total=len(items))
 
@@ -252,7 +256,7 @@ class RAGService:
             StoreUnavailableError: If the store cannot be loaded.
         """
         await self.ensure_ready()
-        chunks, total = await asyncio.to_thread(document_chunks, self._db, document_id, offset, limit)
+        chunks, total = await asyncio.to_thread(document_chunks, self._engine, document_id, offset, limit)
         if total == 0:
             return None
         items = []
@@ -313,7 +317,7 @@ class RAGService:
 
         Each figure stored as a file gets a stable URL,
         ``/v1/images/{record_id}/{position}``, where ``record_id`` is the
-        chunk's Chroma record id and ``position`` counts from 0 within the
+        chunk's record id and ``position`` counts from 0 within the
         chunk. No image file is read: the response carries URLs, not bytes,
         so ``image_count`` and ``total_images`` count those URLs.
         """

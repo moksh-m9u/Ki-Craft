@@ -4,7 +4,7 @@ query's ``llm`` object accepts.
 The list is ``config/providers.py``, the same catalogue ``src/llm.py`` checks a
 request against, so a client picks from exactly what the server will build.
 Server internals (each provider's protocol and base URL) are left out. No
-store or model is touched, so it answers even when the vector store is down.
+store or model is touched, so it answers even when the database is down.
 """
 
 from __future__ import annotations

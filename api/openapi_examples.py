@@ -119,7 +119,7 @@ def error_responses(*codes: int) -> dict[int, dict]:
         404: "Not found: no figure at that record and position, or no document with that id.",
         500: "Unexpected server error. Details are in the server log.",
         502: "The model provider failed, or returned no answer text.",
-        503: "The vector store could not be loaded.",
+        503: "The database could not be reached.",
     }
     responses = {code: {"model": ErrorResponse, "description": descriptions[code]} for code in codes}
     responses[422] = {"model": ValidationErrorResponse, "description": "The request is invalid."}

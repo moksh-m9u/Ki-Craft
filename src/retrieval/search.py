@@ -1,9 +1,14 @@
-"""Vector store loading and document retrieval.
+"""Retrieval: find the stored chunks that answer a question.
 
-Loads the persisted Chroma store and builds the retriever used by the answer
-generation layer. The search type (similarity, MMR, or score threshold) and
-its parameters come from ``config/settings.py``.  ``retrieve_chunks`` is a traced run so retrieval
-shows up as its own child run inside the ``AnswerQuery`` trace.
+The chunks live in Postgres (``src/db/schema.py``); pgvector compares the
+question's embedding with every chunk's. ``PostgresRetriever`` is what the API
+builds per request, ``search_postgres`` applies the search type (similarity,
+MMR, or score threshold, with parameters from ``config/settings.py``), and
+``retrieve_chunks`` is a traced run so retrieval shows up as its own child
+run inside the ``AnswerQuery`` trace.
+
+``load_vector_store`` still opens the old Chroma store for ingestion and
+``scripts/compare_search.py``; it goes when Chroma is removed (Checkpoint 6).
 """
 
 from __future__ import annotations
@@ -55,48 +60,6 @@ def load_vector_store(embedding_model: Embeddings, persist_directory: str = CHRO
         embedding_function=embedding_model,
         collection_metadata=CHROMA_COLLECTION_METADATA,
     )
-
-
-def search_kwargs(search_type: str, k: int) -> dict:
-    """Build the ``search_kwargs`` LangChain needs for one search type.
-
-    Each search type takes different parameters, and Chroma rejects ones that
-    do not belong to it, so only the matching ones are included.
-
-    Args:
-        search_type: One of ``RETRIEVAL_SEARCH_TYPES`` in ``config/settings.py``.
-        k: How many chunks to return.
-
-    Returns:
-        The keyword arguments for ``as_retriever(search_kwargs=...)``.
-
-    Raises:
-        ValueError: If ``search_type`` is not a known search type.
-    """
-    if search_type == "similarity":
-        return {"k": k}
-    if search_type == "mmr":
-        # The pool must be at least k, or MMR has fewer candidates than it returns.
-        return {"k": k, "fetch_k": max(k, RETRIEVAL_FETCH_K), "lambda_mult": RETRIEVAL_LAMBDA_MULT}
-    if search_type == "similarity_score_threshold":
-        return {"k": k, "score_threshold": RETRIEVAL_SCORE_THRESHOLD}
-    raise ValueError(f"Unknown search type {search_type!r}")
-
-
-def build_retriever(db: Chroma, k: int = RETRIEVAL_K):
-    """Build a retriever with the configured search type.
-
-    Args:
-        db: The loaded Chroma vector store.
-        k: How many chunks each query returns.
-
-    Returns:
-        A LangChain retriever whose ``invoke(question)`` returns ``k`` chunks
-        (fewer for ``similarity_score_threshold``).
-    """
-    kwargs = search_kwargs(RETRIEVAL_SEARCH_TYPE, k)
-    logger.debug("Building retriever (search_type=%s, %s)", RETRIEVAL_SEARCH_TYPE, kwargs)
-    return db.as_retriever(search_type=RETRIEVAL_SEARCH_TYPE, search_kwargs=kwargs)
 
 
 def nearest_chunks(engine: Engine, vector: list[float], n: int) -> list[Row]:
