@@ -101,6 +101,7 @@ src/retrieval/
   prompt.py               build the multimodal prompt, label chunks (C1) and figures (IMG1)
   citations.py            read the finished answer's [C1] and [IMG1] citations and check them
   generate.py             retrieve, stream the answer from the model, count tokens, price, trace
+src/db/connection.py    Neon URL -> SQLAlchemy URL for psycopg 3
 src/db/schema.py        Postgres tables (documents, chunks with vector(768), images), SQLAlchemy Core
 migrations/             Alembic migrations that create those tables (alembic.ini at the root)
 src/documents.py        turns stored chunk metadata back into text, tables, images
@@ -119,7 +120,8 @@ app/state.py            session state defaults, kept widget values, the loaded d
 app/api_client.py       the only place the UI talks to the backend
 app/rag_eval_dashboard.py  Streamlit viewer for evaluation results
 app/requirements.txt    the packages Streamlit Community Cloud installs for the dashboard
-scripts/                CLI ingestion: PDFs or json/ exports into the store (scripts/ingest.py)
+scripts/                CLI ingestion: PDFs or json/ exports into the store (scripts/ingest.py);
+                        chroma_to_postgres.py, the one-off copy of the Chroma store into Postgres
 dbv2/                   the built Chroma store and extracted figure images
 json/                   per-document chunk exports (summaries included) used to build dbv2
 evals/                  evaluation questions and notes
@@ -277,6 +279,7 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 - Schema for documents, chunks (with `vector(768)`), images, queries, retrievals, answers, and feedback, with Alembic migrations.
   Started 2026-11-22: `src/db/schema.py` and the first migration (`migrations/versions/0001_documents_chunks_images.py`) create `documents`, `chunks` and `images` and enable pgvector; `alembic upgrade head`, `alembic check` (no drift), `downgrade base` and `upgrade` again ran on the Neon `dev` branch. The other tables come with the code that writes them. The Chroma collection uses cosine distance, so pgvector searches with `<=>`. Packages added: `sqlalchemy` (Core only, no ORM), `psycopg[binary]`, `alembic`, `pgvector`.
 - A one-off script copies ids, summaries, embeddings, and metadata out of Chroma into Postgres. No summarizer and no re-embedding.
+  Done 2026-11-23: `scripts/chroma_to_postgres.py` copied 6 documents, 310 chunks and 276 figures into the Neon `dev` branch in one transaction, then read every row back and found it identical to Chroma (ids, text, tables, figure paths, embeddings bit for bit). It refuses to run on a non-empty `chunks` table; `--check-only` repeats the comparison. `src/db/connection.py:sqlalchemy_url` (shared with `migrations/env.py`) points Neon's `postgresql://` URLs at psycopg 3.
 - Each Chroma record id becomes the chunk's primary key, stored as the Postgres `uuid` type, unchanged. Figure URLs (`/v1/images/{record_id}/{position}`) contain this id, so generating new ids would break every figure link a client holds.
 - Swap the retriever to pgvector and check it returns what Chroma returns: for about 50 real questions, the same record ids among the 20 nearest chunks and the same final 5 after MMR.
 - Remove Chroma once they match.

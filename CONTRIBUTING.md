@@ -238,6 +238,16 @@ alembic current
 alembic check
 ```
 
+To fill a new, empty database from the Chroma store (same ids and embeddings, nothing re-embedded), then compare the two. Restore `dbv2/chroma_db` afterwards, since opening Chroma rewrites it:
+
+```bash
+python -m scripts.chroma_to_postgres
+```
+
+```bash
+git checkout -- dbv2/chroma_db
+```
+
 `alembic check` reports any difference between `schema.py` and the database. A schema change is a new migration: edit `schema.py`, generate a draft with `alembic revision --autogenerate -m "what changed"`, read and correct it, and run `upgrade`. `alembic downgrade -1` undoes the latest one.
 
 ## Ingesting a new PDF
@@ -390,6 +400,7 @@ src/
   embed.py               the one embedding factory (watsonx Granite)
   llm.py                 the one chat model factory: catalogue entry -> LangChain client
   db/schema.py           Postgres tables: documents, chunks (vector(768)), images
+  db/connection.py       Neon URL -> SQLAlchemy URL for psycopg 3
   documents.py           turns stored chunk metadata back into text, tables, figures
   browse.py              lists the stored documents and a document's chunks in order
   tables.py              stored HTML tables -> Markdown for prompts
@@ -422,7 +433,7 @@ app/
   rag_eval_dashboard.py  Streamlit viewer for evaluation results
   requirements.txt       the dashboard's packages (used by Streamlit Community Cloud)
 migrations/              Alembic migrations that create the Postgres tables (alembic.ini at the root)
-scripts/                 command-line ingestion (scripts/ingest.py)
+scripts/                 command-line ingestion (scripts/ingest.py) and the one-off Chroma-to-Postgres copy
 dbv2/                    the built Chroma store and the figure images
 json/                    per-document chunk exports used by the dashboard
 data/                    source PDFs

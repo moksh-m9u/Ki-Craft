@@ -14,26 +14,10 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 
 from config.settings import DATABASE_URL_DIRECT
+from src.db.connection import sqlalchemy_url
 from src.db.schema import metadata
 
 target_metadata = metadata
-
-
-def sqlalchemy_url(url: str) -> str:
-    """Point a ``postgresql://`` URL at the psycopg 3 driver.
-
-    Neon gives plain ``postgresql://`` URLs, which SQLAlchemy would hand to
-    psycopg2, a driver this project does not install.
-
-    Raises:
-        RuntimeError: If the URL is empty (``DATABASE_URL_DIRECT`` not set).
-    """
-    if not url:
-        raise RuntimeError("DATABASE_URL_DIRECT is not set; add the direct Neon connection string to .env")
-    for prefix in ("postgresql://", "postgres://"):
-        if url.startswith(prefix):
-            return "postgresql+psycopg://" + url[len(prefix):]
-    return url
 
 
 def run_migrations_offline() -> None:
@@ -45,7 +29,7 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run the migrations against the database in one transaction."""
-    engine = create_engine(sqlalchemy_url(DATABASE_URL_DIRECT), poolclass=pool.NullPool)
+    engine = create_engine(sqlalchemy_url(DATABASE_URL_DIRECT, "DATABASE_URL_DIRECT"), poolclass=pool.NullPool)
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
