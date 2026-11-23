@@ -1,10 +1,15 @@
 """Read a stored chunk's original text, tables and figures from its metadata.
 
 A chunk's ``page_content`` is its summary; its ``metadata`` holds the original
-content: ``raw_text``, and ``tables_html`` and ``image_paths`` as JSON strings.
-Figures are files under ``IMAGES_DIR``; ``image_paths`` lists them in order.
+content: ``raw_text``, ``tables_html`` and ``image_paths`` (lists; Chroma kept
+the two lists as JSON strings, which are still read). Figures are files under
+``IMAGES_DIR``; ``image_paths`` lists them in order.
 
 Functions:
+
+* :func:`stored_chunks_query`, :func:`document_from_row` - read chunks from
+  Postgres as LangChain ``Document`` objects, the shape retrieval, the prompt
+  and the API already use.
 
 * :func:`chunk_text_and_tables` - text and tables, no figure read.
 * :func:`stored_image_paths`, :func:`stored_image_count` - which figures a
@@ -20,14 +25,72 @@ from pathlib import Path
 from typing import Any
 
 from langchain_core.documents import Document
+from sqlalchemy import Select, func, select
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 
 from config.settings import IMAGES_DIR
+from src.db.schema import chunks, documents, images
 from src.logger import get_logger
 
 logger = get_logger(__name__)
 
 # Repository root: <repo>/src/documents.py -> <repo>
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def stored_chunks_query(*extra_columns) -> Select:
+    """Build the SELECT that reads stored chunks with their document and figures.
+
+    One row per chunk: its record id, ``chunk_id``, original text, tables,
+    summary, the document's ``source``, and ``image_paths``, the figure paths
+    in position order (NULL when the chunk has none). Callers add their own
+    filter, order and limit.
+
+    Args:
+        extra_columns: More columns to select, such as a distance.
+
+    Returns:
+        A SQLAlchemy ``Select``, run with ``connection.execute``.
+    """
+    image_paths = (
+        select(func.array_agg(aggregate_order_by(images.c.path, images.c.position)))
+        .where(images.c.chunk_id == chunks.c.id)
+        .scalar_subquery()
+        .label("image_paths")
+    )
+    return select(
+        chunks.c.id,
+        chunks.c.chunk_id,
+        chunks.c.raw_text,
+        chunks.c.tables_html,
+        chunks.c.summary,
+        documents.c.source,
+        image_paths,
+        *extra_columns,
+    ).join(documents, chunks.c.document_id == documents.c.id)
+
+
+def document_from_row(row: Any) -> Document:
+    """Turn one row of :func:`stored_chunks_query` into a LangChain ``Document``.
+
+    The summary is ``page_content`` and the metadata keys are the ones Chroma
+    held, so the prompt, citations and API code read it unchanged.
+    """
+    tables = list(row.tables_html or [])
+    paths = list(row.image_paths or [])
+    return Document(
+        id=str(row.id),
+        page_content=row.summary,
+        metadata={
+            "source": row.source,
+            "chunk_id": row.chunk_id,
+            "raw_text": row.raw_text,
+            "tables_html": tables,
+            "image_paths": paths,
+            "has_table": bool(tables),
+            "has_image": bool(paths),
+        },
+    )
 
 
 def _parse_json_value(raw: Any, default: Any) -> Any:

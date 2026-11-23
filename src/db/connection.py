@@ -1,10 +1,16 @@
-"""Turns a Neon connection string into one SQLAlchemy can open.
+"""Opens Postgres: turns a Neon connection string into a SQLAlchemy engine.
 
-Used by ``migrations/env.py`` and ``scripts/chroma_to_postgres.py``. The API
-will use it too once it reads from Postgres.
+``create_db_engine`` is what the API, retrieval, ingestion and the scripts
+use; ``migrations/env.py`` uses ``sqlalchemy_url`` directly, because Alembic
+opens its own single connection.
+
+An engine is SQLAlchemy's connection pool: it opens connections when asked,
+keeps a few open for reuse, and is created once per process.
 """
 
 from __future__ import annotations
+
+from sqlalchemy import Engine, create_engine
 
 
 def sqlalchemy_url(url: str, name: str = "DATABASE_URL") -> str:
@@ -29,3 +35,30 @@ def sqlalchemy_url(url: str, name: str = "DATABASE_URL") -> str:
         if url.startswith(prefix):
             return "postgresql+psycopg://" + url[len(prefix):]
     return url
+
+
+def create_db_engine(url: str, name: str = "DATABASE_URL") -> Engine:
+    """Create the engine (connection pool) for one Neon connection string.
+
+    Two settings make it safe behind Neon's pooler and on Render:
+    ``prepare_threshold=None`` stops psycopg from creating server-side
+    prepared statements, which a transaction pooler (PgBouncer) cannot keep
+    across transactions; ``pool_pre_ping`` tests a pooled connection before
+    using it, because Neon closes idle connections when it scales to zero and
+    Render can reset outbound connections.
+
+    Args:
+        url: ``DATABASE_URL`` (pooled) or ``DATABASE_URL_DIRECT``.
+        name: The setting it came from, for the error when it is empty.
+
+    Returns:
+        The engine. No connection is opened until it is first used.
+
+    Raises:
+        RuntimeError: If the URL is empty.
+    """
+    return create_engine(
+        sqlalchemy_url(url, name),
+        pool_pre_ping=True,
+        connect_args={"prepare_threshold": None},
+    )

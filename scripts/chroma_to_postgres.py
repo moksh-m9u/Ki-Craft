@@ -34,10 +34,10 @@ from typing import Any
 
 import chromadb
 import numpy as np
-from sqlalchemy import Engine, create_engine, func, select
+from sqlalchemy import Engine, func, select
 
 from config.settings import CHROMA_PERSIST_DIR, DATABASE_URL_DIRECT
-from src.db.connection import sqlalchemy_url
+from src.db.connection import create_db_engine
 from src.db.schema import chunks, documents, images
 from src.logger import get_logger
 
@@ -167,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     records = read_chroma()
-    engine = create_engine(sqlalchemy_url(DATABASE_URL_DIRECT, "DATABASE_URL_DIRECT"))
+    engine = create_db_engine(DATABASE_URL_DIRECT, "DATABASE_URL_DIRECT")
     if not args.check_only:
         document_rows, chunk_rows, image_rows = rows_from_chroma(records)
         copy(engine, document_rows, chunk_rows, image_rows)
