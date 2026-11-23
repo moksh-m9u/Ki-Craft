@@ -1,16 +1,19 @@
-"""Tests for src/ingestion/pipeline.py: chunk exports become stored records."""
+"""Tests for src/ingestion/pipeline.py: chunk exports become stored chunks.
+
+The two functions that run SQL (``is_stored``, ``write_document``) are
+replaced by an in-memory database, so no test needs Postgres; their SQL is
+checked live (see AGENTS.md, Checkpoint 6)."""
 
 import base64
 import json
+import uuid
 from pathlib import Path
 
 import langsmith
 import pytest
 
-pytest.importorskip("langchain_chroma")
-
 from src.ingestion import pipeline
-from src.ingestion.pipeline import documents_from_export, run_complete_ingestion_pipeline
+from src.ingestion.pipeline import rows_from_export, run_complete_ingestion_pipeline
 
 JPEG = b"\xff\xd8\xff\xe0fig"
 
@@ -45,29 +48,28 @@ def _export() -> list[dict]:
     ]
 
 
-def test_records_have_flat_metadata_and_figure_files(tmp_path):
+def test_rows_carry_the_export_and_figure_files(tmp_path):
     images_dir = tmp_path / "images"
-    docs = documents_from_export(_export(), "ne555", images_dir)
+    chunk_rows, image_rows = rows_from_export(_export(), "ne555", [[1.0], [2.0]], images_dir)
 
-    assert [d.page_content for d in docs] == ["summary one", "summary two"]
-    assert set(docs[1].metadata) == {
-        "source", "chunk_id", "raw_text", "tables_html", "image_paths", "has_table", "has_image",
-    }
-    assert docs[0].metadata["image_paths"] == "[]"
-    assert not docs[0].metadata["has_image"] and not docs[0].metadata["has_table"]
-
-    paths = json.loads(docs[1].metadata["image_paths"])
-    assert paths == [str(images_dir / "ne555_c2_img0.jpg"), str(images_dir / "ne555_c2_img1.jpg")]
+    assert [r["summary"] for r in chunk_rows] == ["summary one", "summary two"]
+    assert [r["chunk_id"] for r in chunk_rows] == [1, 2]
+    assert [r["embedding"] for r in chunk_rows] == [[1.0], [2.0]]
+    assert chunk_rows[1]["tables_html"] == ["<table/>"] and chunk_rows[0]["tables_html"] == []
+    assert chunk_rows[1]["raw_text"] == "text two"
+    assert all(isinstance(r["id"], uuid.UUID) for r in chunk_rows)
+    assert image_rows == [
+        {"chunk_id": chunk_rows[1]["id"], "position": 0, "path": str(images_dir / "ne555_c2_img0.jpg")},
+        {"chunk_id": chunk_rows[1]["id"], "position": 1, "path": str(images_dir / "ne555_c2_img1.jpg")},
+    ]
     assert (images_dir / "ne555_c2_img0.jpg").read_bytes() == JPEG
-    assert json.loads(docs[1].metadata["tables_html"]) == ["<table/>"]
-    assert docs[1].metadata["source"] == "ne555" and docs[1].metadata["chunk_id"] == 2
 
 
 def test_stored_paths_keep_the_images_dir_as_given(tmp_path, monkeypatch):
-    """A relative images folder gives repo-relative paths, like the shipped store."""
+    """A relative images folder gives repo-relative paths, like the shipped figures."""
     monkeypatch.chdir(tmp_path)
-    docs = documents_from_export(_export(), "ne555", "dbv2/images")
-    assert json.loads(docs[1].metadata["image_paths"])[0] == "dbv2/images/ne555_c2_img0.jpg"
+    _, image_rows = rows_from_export(_export(), "ne555", [[1.0], [2.0]], "dbv2/images")
+    assert image_rows[0]["path"] == "dbv2/images/ne555_c2_img0.jpg"
 
 
 def test_existing_export_stops_before_any_work(tmp_path, monkeypatch):
@@ -97,23 +99,22 @@ def test_pipeline_writes_the_export_then_stores_it(tmp_path, monkeypatch):
         lambda docs, filename: Path(filename).write_text(json.dumps(_export())),
     )
     monkeypatch.setattr(pipeline, "load_embedding_model", _Embedder)
+    database = _Database(monkeypatch)
 
     run_complete_ingestion_pipeline(
         "data/ne555.pdf",
-        persist_directory=str(tmp_path / "store"),
         images_dir=tmp_path / "img",
         export_dir=tmp_path / "json",
+        engine="fake-engine",
     )
     assert (tmp_path / "json" / "ne555.json").exists()
     assert seen["document"] == "ne555: header"
-    records = _records(tmp_path)
-    assert records["sources"] == ["ne555", "ne555"]
-    assert records["documents"] == ["summary one", "summary two"]
+    assert [r["summary"] for r in database.documents["ne555"]["chunks"]] == ["summary one", "summary two"]
     assert (tmp_path / "img" / "ne555_c2_img0.jpg").read_bytes() == JPEG
 
 
 class _Embedder:
-    """An offline embedder for a temporary Chroma store; can be told to fail."""
+    """An offline embedder; can be told to fail."""
 
     def __init__(self, fail: bool = False):
         self.fail = fail
@@ -129,71 +130,101 @@ class _Embedder:
         return [float(len(text)), 1.0, 0.0]
 
 
+class _Database:
+    """An in-memory stand-in for ``is_stored`` and ``write_document``."""
+
+    def __init__(self, monkeypatch):
+        self.documents: dict[str, dict] = {}
+        monkeypatch.setattr(pipeline, "is_stored", lambda engine, source: source in self.documents)
+        monkeypatch.setattr(pipeline, "write_document", self.write)
+
+    def write(self, engine, source, chunk_rows, image_rows):
+        """Replace the document, as one transaction would."""
+        self.documents[source] = {"chunks": chunk_rows, "images": image_rows}
+
+    def ids(self, source: str = "ne555") -> list:
+        """The stored record ids of one document."""
+        return [r["id"] for r in self.documents.get(source, {}).get("chunks", [])]
+
+
 def _store(tmp_path, monkeypatch, embedder: _Embedder | None = None) -> _Embedder:
-    """Point store_export at a temporary Chroma store and an offline embedder."""
+    """Point store_export at an offline embedder and write the export file."""
     embedder = embedder or _Embedder()
     monkeypatch.setattr(pipeline, "load_embedding_model", lambda: embedder)
     (tmp_path / "ne555.json").write_text(json.dumps(_export()))
     return embedder
 
 
-def _records(tmp_path) -> dict:
-    from langchain_chroma import Chroma
-
-    db = Chroma(persist_directory=str(tmp_path / "store"), embedding_function=_Embedder())
-    found = db.get(include=["metadatas", "documents", "embeddings"])
-    return {"ids": found["ids"], "sources": sorted(m["source"] for m in found["metadatas"]),
-            "documents": sorted(found["documents"]), "embeddings": found["embeddings"]}
+@pytest.fixture
+def database(monkeypatch) -> _Database:
+    """An empty in-memory database."""
+    return _Database(monkeypatch)
 
 
 def _put(tmp_path, monkeypatch, replace: bool = False, embedder: _Embedder | None = None):
     _store(tmp_path, monkeypatch, embedder)
-    return pipeline.store_export(tmp_path / "ne555.json", str(tmp_path / "store"), tmp_path / "img", replace=replace)
+    return pipeline.store_export(tmp_path / "ne555.json", tmp_path / "img", replace=replace, engine="fake-engine")
 
 
-def test_store_export_adds_its_records_without_summarising(tmp_path, monkeypatch):
+def test_store_export_adds_its_chunks_without_summarising(tmp_path, monkeypatch, database):
     monkeypatch.setattr(pipeline, "summarise_chunks", lambda *a: pytest.fail("no summarising"))
     embedder = _Embedder()
-    _put(tmp_path, monkeypatch, embedder=embedder)
-    records = _records(tmp_path)
-    assert records["sources"] == ["ne555", "ne555"]
-    assert records["documents"] == ["summary one", "summary two"]
-    assert [list(v) for v in records["embeddings"]] == [pytest.approx([11.0, 1.0, 0.0])] * 2
+    assert _put(tmp_path, monkeypatch, embedder=embedder) == 2
+    stored = database.documents["ne555"]
+    assert [r["summary"] for r in stored["chunks"]] == ["summary one", "summary two"]
+    assert [r["embedding"] for r in stored["chunks"]] == [[11.0, 1.0, 0.0], [11.0, 1.0, 0.0]]
+    assert len(stored["images"]) == 2
     assert embedder.calls == 1, "every summary is embedded once"
     assert (tmp_path / "img" / "ne555_c2_img0.jpg").read_bytes() == JPEG
 
 
-def test_store_export_refuses_a_document_already_stored(tmp_path, monkeypatch):
+def test_store_export_refuses_a_document_already_stored(tmp_path, monkeypatch, database):
     _put(tmp_path, monkeypatch)
-    before = _records(tmp_path)["ids"]
+    before = database.ids()
+    embedder = _Embedder()
     with pytest.raises(FileExistsError, match="--replace"):
-        _put(tmp_path, monkeypatch)
-    assert _records(tmp_path)["ids"] == before
+        _put(tmp_path, monkeypatch, embedder=embedder)
+    assert database.ids() == before
+    assert embedder.calls == 0, "refused before the embedding call"
 
 
-def test_replace_swaps_the_records_and_removes_stale_figures(tmp_path, monkeypatch):
+def test_replace_swaps_the_chunks_and_removes_stale_figures(tmp_path, monkeypatch, database):
     _put(tmp_path, monkeypatch)
-    old_ids = set(_records(tmp_path)["ids"])
+    old_ids = set(database.ids())
     (tmp_path / "img" / "ne555_c9_img0.jpg").write_bytes(b"old figure of a chunk that no longer exists")
     (tmp_path / "img" / "lm555_c1_img0.jpg").write_bytes(b"another document")
 
     _put(tmp_path, monkeypatch, replace=True)
-    records = _records(tmp_path)
-    assert records["sources"] == ["ne555", "ne555"]
-    assert not old_ids & set(records["ids"])
+    assert len(database.ids()) == 2
+    assert not old_ids & set(database.ids()), "replaced chunks get new record ids"
     assert not (tmp_path / "img" / "ne555_c9_img0.jpg").exists()
     assert (tmp_path / "img" / "ne555_c2_img0.jpg").read_bytes() == JPEG
     assert (tmp_path / "img" / "lm555_c1_img0.jpg").exists(), "other documents are untouched"
 
 
-def test_failed_embedding_leaves_the_stored_document_as_it_was(tmp_path, monkeypatch):
-    """Embedding runs before anything is deleted."""
+def test_failed_embedding_leaves_the_stored_document_as_it_was(tmp_path, monkeypatch, database):
+    """Embedding runs before anything is written or deleted."""
     _put(tmp_path, monkeypatch)
-    before = _records(tmp_path)["ids"]
+    before = database.ids()
+    (tmp_path / "img" / "ne555_c9_img0.jpg").write_bytes(b"old figure")
     with pytest.raises(RuntimeError, match="embedding service down"):
         _put(tmp_path, monkeypatch, replace=True, embedder=_Embedder(fail=True))
-    assert _records(tmp_path)["ids"] == before
-    assert (tmp_path / "img" / "ne555_c2_img0.jpg").exists()
+    assert database.ids() == before
+    assert (tmp_path / "img" / "ne555_c9_img0.jpg").exists()
+
+
+def test_failed_database_write_keeps_old_figure_files(tmp_path, monkeypatch, database):
+    """Stale figure files are removed only after the transaction succeeds."""
+    _put(tmp_path, monkeypatch)
+    (tmp_path / "img" / "ne555_c9_img0.jpg").write_bytes(b"old figure")
+
+    def failing_write(*args):
+        raise RuntimeError("connection lost")
+
+    monkeypatch.setattr(pipeline, "write_document", failing_write)
+    with pytest.raises(RuntimeError, match="connection lost"):
+        _put(tmp_path, monkeypatch, replace=True)
+    assert (tmp_path / "img" / "ne555_c9_img0.jpg").exists()
 
 
 @pytest.mark.parametrize(
@@ -204,12 +235,13 @@ def test_failed_embedding_leaves_the_stored_document_as_it_was(tmp_path, monkeyp
         (lambda e: e[1]["metadata"]["original_content"].update(images_base64=["not base64!"]), "does not decode"),
     ],
 )
-def test_a_broken_export_is_rejected_before_any_change(tmp_path, monkeypatch, broken, message):
+def test_a_broken_export_is_rejected_before_any_change(tmp_path, monkeypatch, database, broken, message):
     export = _export()
     broken(export)
     embedder = _store(tmp_path, monkeypatch)
     (tmp_path / "ne555.json").write_text(json.dumps(export))
     with pytest.raises(ValueError, match=message):
-        pipeline.store_export(tmp_path / "ne555.json", str(tmp_path / "store"), tmp_path / "img")
+        pipeline.store_export(tmp_path / "ne555.json", tmp_path / "img", engine="fake-engine")
     assert embedder.calls == 0
     assert not (tmp_path / "img").exists()
+    assert database.documents == {}

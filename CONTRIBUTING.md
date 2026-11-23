@@ -11,7 +11,7 @@ This guide sets up the project for development: installing it, running each part
 - [Running the API](#running-the-api)
 - [Running the dashboard](#running-the-dashboard)
 - [Tests](#tests)
-- [Database migrations](#database-migrations)
+- [Database](#database)
 - [Ingesting a new PDF](#ingesting-a-new-pdf)
 - [Running with Docker](#running-with-docker)
 - [Configuration](#configuration)
@@ -29,11 +29,11 @@ This guide sets up the project for development: installing it, running each part
 | poppler, tesseract, libmagic, pandoc | ingestion only | see [Ingesting a new PDF](#ingesting-a-new-pdf) |
 | Docker | building the API image only | [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
 
-You also need a Gemini API key and a watsonx.ai API key with its project id; see [Environment variables](#environment-variables).
+You also need a Gemini API key, a watsonx.ai API key with its project id, and a Postgres database with pgvector; see [Environment variables](#environment-variables) and [Database](#database).
 
 ## Setup
 
-The vector store is already built, so the API and the dashboard run straight after these steps, with no PDF parsing tools.
+The six documents' summaries ship in `json/` and their figures in `dbv2/images/`, so no PDF parsing tools are needed: you create the tables and store the summaries in your own database (step [Database](#database)), and the API and the dashboard run.
 
 Clone the repository:
 
@@ -55,10 +55,20 @@ uv sync
 source .venv/bin/activate
 ```
 
-Create `.env` from the template and fill in the three keys (see [Environment variables](#environment-variables)):
+Create `.env` from the template and fill in the keys and the two database URLs (see [Environment variables](#environment-variables)):
 
 ```bash
 cp .env.example .env
+```
+
+Create the tables and load the six documents into your database, as described in [Database](#database):
+
+```bash
+alembic upgrade head
+```
+
+```bash
+python -m scripts.ingest json/*.json
 ```
 
 Check that the code imports and the tests pass:
@@ -141,7 +151,7 @@ Interactive documentation is at http://127.0.0.1:8001/docs.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/` | Lists the endpoints |
-| GET | `/health` | Reports whether the vector store loaded |
+| GET | `/health` | Reports whether the database answers |
 | POST | `/v1/retrieve` | Returns the retrieved chunks, with no LLM call |
 | POST | `/v1/query` | Retrieves, then answers with the default model, or with the provider, model and key in an optional `llm` object |
 | POST | `/v1/query/stream` | The same, streamed token by token over Server-Sent Events |
@@ -222,9 +232,29 @@ Run one file or one test:
 python -m pytest -q -p no:cacheprovider tests/test_embed.py
 ```
 
-## Database migrations
+## Database
 
-The Postgres tables are described in `src/db/schema.py` and created by the Alembic migrations in `migrations/versions/`. Alembic connects with `DATABASE_URL_DIRECT`. Use the Neon `dev` branch while developing; `production` is what the deployed API reads.
+Everything the API reads lives in Postgres with the pgvector extension: documents, chunks with their summaries, original text, tables and embeddings, and figure paths. The figure image files themselves stay in `dbv2/images/`. Any Postgres 15 or later with pgvector works:
+
+- **Neon (what the project uses).** Create a free project at neon.com in the region nearest your API, and copy two connection strings from the Connect dialog: pooled (connection pooling on, the host contains `-pooler`) into `DATABASE_URL`, and direct (pooling off) into `DATABASE_URL_DIRECT`. The maintainers develop on a `dev` branch; the deployed API reads `production`.
+- **Docker.** `docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres pgvector/pgvector:pg17`, then set both variables to `postgresql://postgres:postgres@localhost:5432/postgres`.
+- **Any other host** with pgvector available (Supabase through its session pooler, a managed Postgres, a local install).
+
+Then create the tables and store the six shipped documents. Storing re-embeds each summary with watsonx (310 calls' worth of text, about 100,000 tokens) and writes no summaries, since those are in `json/`:
+
+```bash
+alembic upgrade head
+```
+
+```bash
+python -m scripts.ingest json/*.json
+```
+
+Chunks stored this way get new record ids, so figure URLs differ from another database's; they are stable within one database.
+
+### Migrations
+
+The Postgres tables are described in `src/db/schema.py` and created by the Alembic migrations in `migrations/versions/`. Alembic connects with `DATABASE_URL_DIRECT`, the direct host, because a migration is one long session and the pooler is per transaction.
 
 ```bash
 alembic upgrade head
@@ -238,31 +268,21 @@ alembic current
 alembic check
 ```
 
-To fill a new, empty database from the Chroma store (same ids and embeddings, nothing re-embedded), then compare the two. Restore `dbv2/chroma_db` afterwards, since opening Chroma rewrites it:
-
-```bash
-python -m scripts.chroma_to_postgres
-```
-
-```bash
-git checkout -- dbv2/chroma_db
-```
-
 `alembic check` reports any difference between `schema.py` and the database. A schema change is a new migration: edit `schema.py`, generate a draft with `alembic revision --autogenerate -m "what changed"`, read and correct it, and run `upgrade`. `alembic downgrade -1` undoes the latest one.
 
 ## Ingesting a new PDF
 
-Ingestion is not needed to use the five documents that ship with the repository. Read this section before running it:
+Ingestion of PDFs is not needed to use the six documents that ship with the repository (see [Database](#database)). Read this section before running it:
 
 - It calls a vision model once for every chunk with tables or figures. `--backend huggingface` (the default) uses GLM-4.5V on the Hugging Face router, which needs `HF_TOKEN` and credit. `--backend local` uses a model on your Mac through `mlx_vlm.server`; see below.
 - It calls watsonx once per chunk for the embedding.
-- It writes to the tracked store in `dbv2/chroma_db`, so it changes files that git tracks.
-- One script, `scripts/ingest.py`, takes either input. Both are stored by the same function, `src/ingestion/pipeline.py:store_export`: a PDF is first turned into an export, then stored like any other. Each figure becomes a file in `dbv2/images`, and the record holds its path and a `source` name.
+- It writes to the database at `DATABASE_URL_DIRECT`, and figure files to `dbv2/images`.
+- One script, `scripts/ingest.py`, takes either input. Both are stored by the same function, `src/ingestion/pipeline.py:store_export`: a PDF is first turned into an export, then stored like any other. Each figure becomes a file in `dbv2/images`, and the `images` table holds its path; the `documents` table holds the `source` name.
 
 | Input | What it does |
 |---|---|
-| a PDF, or a folder of PDFs | Parses, chunks, summarises, writes the export to `json/<pdf name>.json`, then stores it as below. It skips a PDF whose export already exists, and refuses one the store already holds. If storing fails, the export stays, so `python -m scripts.ingest json/<pdf name>.json` finishes the job without summarising again |
-| a `json/<name>.json` export | Embeds the existing summaries and stores the records, with no summarising. It refuses a document the store already holds unless `--replace` is given; replacing embeds first and only then removes the old records and figures |
+| a PDF, or a folder of PDFs | Parses, chunks, summarises, writes the export to `json/<pdf name>.json`, then stores it as below. It skips a PDF whose export already exists, and refuses one the database already holds. If storing fails, the export stays, so `python -m scripts.ingest json/<pdf name>.json` finishes the job without summarising again |
+| a `json/<name>.json` export | Embeds the existing summaries and stores the chunks, with no summarising. It refuses a document the database already holds unless `--replace` is given; replacing embeds first, then swaps the old chunks for the new ones in one transaction, and removes old figure files last. Replaced chunks get new record ids |
 
 PDF parsing needs programs that no Python dependency file installs: poppler reads PDFs, tesseract does OCR, libmagic detects file types and pandoc converts formats.
 
@@ -302,19 +322,19 @@ Then ingest one PDF, or every PDF in a folder:
 python -m scripts.ingest data/ --backend local
 ```
 
-To check the summaries before they reach the store, write only the export to `json/` and send the records and figures to a scratch folder. The dashboard lists every `json/*.json`, so the new document can be read in the chunk inspector:
+To check the summaries before they reach the shared database, send the chunks to a scratch database (for example a throwaway Neon branch, by pointing `DATABASE_URL_DIRECT` at it for this one command) and the figures to a scratch folder. The export still goes to `json/`:
 
 ```bash
-python -m scripts.ingest data/ne555.pdf --backend local --store /tmp/trial/chroma_db --images /tmp/trial/images
+DATABASE_URL_DIRECT=<scratch database URL> python -m scripts.ingest data/ne555.pdf --backend local --images /tmp/trial/images
 ```
 
-Once the summaries look right, store that export as it is, with no summary model call (it is refused if the store already holds that document):
+Once the summaries look right, store that export as it is, with no summary model call (it is refused if the database already holds that document):
 
 ```bash
 python -m scripts.ingest json/ne555.json
 ```
 
-Each PDF is done in full or not at all. A PDF whose export (`json/<name>.json`) already exists is skipped, and a PDF that fails is logged while the batch carries on, so an interrupted overnight run resumes with the same command. `--store`, `--images` and `--exports` write somewhere other than the tracked store, for a trial run.
+Each PDF is done in full or not at all. A PDF whose export (`json/<name>.json`) already exists is skipped, and a PDF that fails is logged while the batch carries on, so an interrupted overnight run resumes with the same command. `--images` and `--exports` write figures and exports somewhere other than the tracked folders, for a trial run.
 
 The summary settings are environment variables (defaults in `config/settings.py`):
 

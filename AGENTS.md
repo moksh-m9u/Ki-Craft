@@ -90,12 +90,12 @@ config/settings.py      every tunable and environment variable
 config/providers.py     catalogue of LLM providers and models the query llm object accepts
 src/embed.py            the one embedding factory (IBM watsonx Granite, 768 dims)
 src/llm.py              the one chat model factory: catalogue entry -> LangChain client; default_llm
-src/ingestion/          offline pipeline: PDF -> elements -> chunks -> summaries -> Chroma
+src/ingestion/          offline pipeline: PDF -> elements -> chunks -> summaries -> Postgres
   extract.py              unstructured partition_pdf (hi_res, tables, images); drops headers, footers, logos
   chunk.py                chunk_by_title
   enrich.py               vision LLM summary per chunk (HF router GLM-4.5V, or local mlx_vlm Qwen3.5-4B)
   export.py               chunks -> JSON export
-  pipeline.py             export -> records with figure files; runs the steps and writes Chroma
+  pipeline.py             export -> rows with figure files; runs the steps and writes Postgres
 src/retrieval/
   search.py               load Chroma, build the MMR retriever, retrieve
   prompt.py               build the multimodal prompt, label chunks (C1) and figures (IMG1)
@@ -284,6 +284,7 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 - Swap the retriever to pgvector and check it returns what Chroma returns: for about 50 real questions, the same record ids among the 20 nearest chunks and the same final 5 after MMR.
   Switched 2026-11-23: the API reads only Postgres. `RAGService` holds the embedding client and one engine (`src/db/connection.py:create_db_engine` on `DATABASE_URL`, pooled), checked with `SELECT 1` at startup (503 when it fails, detail `Database unavailable: ...`); each request gets a `PostgresRetriever`; `src/browse.py` lists documents, pages a document's chunks and looks up one figure's path with plain SQL, as planned in Checkpoint 4; the figure endpoint still serves only files inside `IMAGES_DIR` (`src/documents.py:figure_file`). Checked live against Neon `dev`: `/health`, the per-document chunk, figure and table counts (identical to Chroma's), a chunk page, a figure (200, image/jpeg), 404 for an unknown document and position, and `/v1/retrieve`. The `/health` body still says `vector_store`, to keep the response shape. The API tests fake the engine-backed reads (`tests/api/fakes.py:FakeStore`). The API image installs `sqlalchemy`, `psycopg[binary]` and `pgvector`.
   Checked 2026-11-23 with `scripts/compare_search.py` on the 76 golden-set questions (one watsonx embedding per question, sent to both stores): the final 5 after MMR match on all 76, in the same order; the nearest 20 match on 75, and on the other one two chunks tie at exactly the same distance at ranks 20 and 21 and the stores break the tie differently. Postgres now breaks ties by record id. Found on the way: LangChain's Chroma returns MMR's picks in nearest-first order, not in the order MMR picks them, and that order sets the `C1`..`C5` labels and which figures fit the image cap, so `search_postgres` sorts its picks the same way. That run took watsonx to 90 percent of its monthly embedding quota (271,140 of 300,000 tokens).
+- Ingestion writes Postgres. Done 2026-11-23: `src/ingestion/pipeline.py:store_export` checks the export, refuses a stored document unless `replace`, embeds every summary, writes figure files (`rows_from_export`), then `write_document` deletes the old document (cascade) and inserts the new rows in one transaction; stale figure files go last. `scripts/ingest.py` lost `--store`; it writes to `DATABASE_URL_DIRECT`. A new database is filled with `alembic upgrade head` and `python -m scripts.ingest json/*.json` (re-embeds about 100,000 tokens, new record ids); `CONTRIBUTING.md` has a Database section for contributors (Neon, the `pgvector/pgvector` Docker image, or any Postgres with pgvector). Checked live on Neon `dev` with a two-chunk test document: stored, refused without `--replace`, replaced with new record ids, then deleted.
 - Remove Chroma once they match.
 
 **Checkpoint 5. Evaluation baseline.** Runs after Checkpoint 6, on Postgres.
