@@ -355,7 +355,7 @@ Uploading a PDF through the API, with a hosted parser in production, is the goal
 
 ## Running with Docker
 
-The image contains only the backend code and the pre-built store (`api/`, `src/`, `config/`, `dbv2/`), and installs only `api/requirements.txt`. It is about 1.17 GB and holds no secrets; credentials are passed at run time. Render runs this image and sets `PORT` itself.
+The image contains only the backend code and the figure files (`api/`, `src/`, `config/`, `dbv2/images/`), and installs only `api/requirements.txt`. The chunks live in Postgres, so the container needs `DATABASE_URL` at run time along with the other credentials; the image holds no secrets. Render runs this image and sets `PORT` itself.
 
 Build:
 
