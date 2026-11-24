@@ -119,7 +119,7 @@ The local backend is built for long unattended runs (for example a folder of PDF
 
 Before 2026-11-16 a failed call silently stored the chunk's first 300 characters as its summary. That hid a dead provider: a whole document could be indexed with placeholder summaries and nothing would say so. Failing loudly is safer for a batch job.
 
-The summarizer is needed only for **new** documents. The existing 270 summaries are stored in Chroma and in `json/`, and they move to Postgres as they are (section 5).
+The summarizer is needed only for **new** documents. The existing summaries are stored in Postgres and in `json/`, and they move to Postgres as they are (section 5).
 
 **How to defend it:** "Summaries are an index, not a source. They translate tables and figures into the language people ask in, which raises recall, and the generator still reads the original so a bad summary costs recall, never correctness. Summaries are produced once and stored, so losing a provider never forces re-summarizing the corpus."
 
@@ -156,7 +156,7 @@ A known weakness of every dense embedder: part numbers (`LM2596S-5.0`) and exact
 
 **Decided (2026-11-12): Postgres + pgvector**, replacing Chroma and also holding application data.
 
-**Today (2026-11-23):** Postgres with pgvector on Neon. The API and ingestion read and write only Postgres; the Chroma files in `dbv2/chroma_db` remain only until the `production` branch is filled from them, then they are deleted.
+**Today (2026-11-23):** Postgres with pgvector on Neon. The API and ingestion read and write only Postgres; the `production` branch was filled by copying the Chroma store on 2026-11-24, and the Chroma files were then deleted.
 
 | Option | Strengths | Weaknesses |
 |---|---|---|
@@ -184,7 +184,7 @@ Each Chroma record already holds everything a pgvector row needs:
 
 So the migration is a one-off copy: `collection.get(include=["documents", "embeddings", "metadatas"])` and a bulk insert. It needs **no summarizer and no embedding calls**, because the embedding model stays the same. Figure JPEGs stay on disk under `dbv2/images` and are referenced by path.
 
-`json/` is a second, independent copy of the summaries. If the Chroma files were ever lost, Postgres could be rebuilt from `json/` with only embedding calls (cheap), still without a summarizer.
+`json/` is a second, independent copy of the summaries. If the database were ever lost, Postgres could be rebuilt from `json/` with only embedding calls (cheap), still without a summarizer.
 
 What would force real re-work:
 
@@ -194,13 +194,13 @@ What would force real re-work:
 
 Verification, done 2026-11-23:
 
-- `scripts/chroma_to_postgres.py` read every row back after the copy: ids, text, tables, figure paths and embeddings were identical, bit for bit.
-- `scripts/compare_search.py` sent the 76 golden-set questions to both stores with the same question embedding. The final 5 after MMR matched on all 76, in order; the nearest 20 matched on 75, and the 76th had two chunks at exactly the same distance at ranks 20 and 21. Postgres breaks such ties by record id.
+- The copy script (`scripts/chroma_to_postgres.py`, deleted afterwards; see git history) read every row back after the copy: ids, text, tables, figure paths and embeddings were identical, bit for bit.
+- A comparison script (`scripts/compare_search.py`, also deleted) sent the 76 golden-set questions to both stores with the same question embedding. The final 5 after MMR matched on all 76, in order; the nearest 20 matched on 75, and the 76th had two chunks at exactly the same distance at ranks 20 and 21. Postgres breaks such ties by record id.
 - One real difference was found and fixed on the way: LangChain's Chroma returns MMR's picks in nearest-first order, not in the order MMR picks them. That order decides the `C1`..`C5` labels and which figures fit the image cap, so `search_postgres` sorts the same way.
 
 **How to defend it:** "Chroma was right for a fixed corpus baked into an image. Uploads turn this into a multi-document, stateful system, and keeping vectors next to the document records in Postgres removes a whole class of consistency bugs. Because summaries and embeddings are stored artifacts, the migration was a data copy, not a rebuild, and I proved it by comparing what both stores return for the same 76 questions."
 
-**Status:** Checkpoint 6, nearly done: reads and ingestion run on Postgres (Neon `dev`). Left: fill the `production` branch, then delete Chroma.
+**Status:** Checkpoint 6 done (2026-11-24): reads and ingestion run on Postgres, `dev` and `production` hold the same data, and Chroma is deleted.
 
 ## 6. Retrieval
 

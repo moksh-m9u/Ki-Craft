@@ -1,8 +1,8 @@
 """Read a stored chunk's original text, tables and figures from its metadata.
 
 A chunk's ``page_content`` is its summary; its ``metadata`` holds the original
-content: ``raw_text``, ``tables_html`` and ``image_paths`` (lists; Chroma kept
-the two lists as JSON strings, which are still read). Figures are files under
+content: ``raw_text``, ``tables_html`` and ``image_paths`` (lists; JSON strings,
+as the old Chroma store kept them, are still accepted). Figures are files under
 ``IMAGES_DIR``; ``image_paths`` lists them in order.
 
 Functions:

@@ -22,7 +22,7 @@ COPY api/requirements.txt api/requirements.txt
 RUN pip install --no-cache-dir -r api/requirements.txt
 
 # .dockerignore is an allowlist, so this copies only the backend code (api/,
-# src/, config/) and the pre-built vector store with its figures (dbv2/).
+# src/, config/) and the figure files (dbv2/images); the chunks live in Postgres.
 COPY . .
 
 # Writable runtime artifacts (logs are also mirrored to stdout).

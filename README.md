@@ -68,7 +68,7 @@ flowchart TB
     end
 
     subgraph Storage["Storage (Neon, dbv2/images, json)"]
-        CHROMA[("Postgres + pgvector<br/>summary vector + raw_text,<br/>tables_html, figure paths")]
+        STORE[("Postgres + pgvector<br/>summary vector + raw_text,<br/>tables_html, figure paths")]
         IMAGES[("dbv2/images<br/>figure JPEGs")]
         JSON[("json/*.json<br/>chunk exports")]
     end
@@ -92,12 +92,12 @@ flowchart TB
     PDF --> PART
     ENRICH --> JSON
     JSON --> BUILD
-    BUILD --> CHROMA
+    BUILD --> STORE
     BUILD --> IMAGES
-    CHROMA --> MMR
+    STORE --> MMR
     IMAGES --> REBUILD
     CHAT -- "HTTP" --> Q
-    EXPLORE -- "HTTP, /v1/documents" --> CHROMA
+    EXPLORE -- "HTTP, /v1/documents" --> STORE
 ```
 
 </details>

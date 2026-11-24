@@ -10,8 +10,7 @@ before the app starts (see ``conftest.py:backend``):
 * the two chat client classes inside ``src/llm.py``. The real ``create_llm``
   still runs, so its catalogue checks are part of every test.
 
-Guards make any attempt to create a real database engine, open Chroma or
-build a real watsonx client fail the test, and LangSmith tracing is switched
+Guards make any attempt to create a real database engine or build a real watsonx client fail the test, and LangSmith tracing is switched
 off, so no test touches Neon, ``dbv2/`` or the network.
 """
 

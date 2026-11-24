@@ -61,7 +61,6 @@ GENERATION_PROVIDER: str = "gemini"
 GENERATION_MODEL: str = "gemini-3.5-flash-lite"
 
 # Storage locations
-CHROMA_PERSIST_DIR: str = "dbv2/chroma_db"
 IMAGES_DIR: str = "dbv2/images"
 # One chunk export per ingested document, <source>.json.
 JSON_EXPORT_DIR: str = "json"
@@ -191,5 +190,3 @@ CORS_ALLOWED_ORIGINS: list[str] = [
     o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", _CORS_DEFAULT).split(",") if o.strip()
 ]
 
-# Vector store settings
-CHROMA_COLLECTION_METADATA: dict = {"hnsw:space": "cosine"}

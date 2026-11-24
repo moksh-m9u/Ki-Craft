@@ -10,7 +10,7 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 **Vector store.** A database that stores embeddings and finds the nearest ones to a query embedding. Here: Postgres with pgvector (Chroma until 2026-11-23).
 
-**HNSW (Hierarchical Navigable Small World).** The index that makes nearest-neighbour search fast. It builds a layered graph of vectors and walks it towards the query instead of comparing against every vector. The result is approximate but very close to exact. Chroma and pgvector both use it.
+**HNSW (Hierarchical Navigable Small World).** The index that makes nearest-neighbour search fast. It builds a layered graph of vectors and walks it towards the query instead of comparing against every vector. The result is approximate but very close to exact. pgvector offers it; with a few hundred chunks this project compares every row instead, which is exact and fast enough.
 
 **MMR (Maximal Marginal Relevance).** A way to pick results that are relevant to the question but different from each other. Here it fetches the 20 nearest chunks and keeps 5 (`top_k`), so the prompt does not get five copies of the same table. `src/retrieval/search.py`.
 
@@ -98,7 +98,7 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 **Prepared statement.** A query the server parses once and runs many times. psycopg 3 prepares repeated queries automatically, but a transaction pooler such as PgBouncer may run the next transaction on another server connection that never saw it, so `create_db_engine` turns this off (`prepare_threshold=None`).
 
-**Neon branch.** A copy of a Neon database that shares storage with its parent until either changes, so it is created instantly. Here `dev` is where migrations, the Chroma copy and ingestion changes are tried; `production` is what the deployed API reads.
+**Neon branch.** A copy of a Neon database that shares storage with its parent until either changes, so it is created instantly. Here `dev` is where migrations, live checks and ingestion changes are tried; `production` is what the deployed API reads.
 
 ## API and serving
 
@@ -114,7 +114,7 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 **Pagination (offset and limit).** Returning a long list in pages. The client sends `offset` (how many items to skip) and `limit` (how many to return), and the response says `total`, so the client knows when it has everything. A page past the end is simply empty. The alternative, cursor pagination, hands back an opaque "continue from here" token instead; it suits huge or fast-changing lists, where an offset can skip or repeat items when rows are inserted. Here a document's chunks are few and change only on re-ingestion, so offset and limit are enough. `GET /v1/documents/{document_id}/chunks`.
 
-**Record id.** The id each stored chunk gets when it is stored (first by Chroma, now by ingestion), kept as `chunks.id` in Postgres, a random UUID such as `004ca22b-a528-444e-9c0e-27c8b5858ff5`. It never changes while the record exists, so figure URLs contain it (`/v1/images/{record_id}/{position}`), and it will become the chunk's primary key in Postgres. Not the same as `chunk_id`, which is only the chunk's position in one response.
+**Record id.** The id each stored chunk gets when it is stored (the first 310 came from Chroma, new ones from ingestion), kept as `chunks.id` in Postgres, a random UUID such as `004ca22b-a528-444e-9c0e-27c8b5858ff5`. It never changes while the record exists, so figure URLs contain it (`/v1/images/{record_id}/{position}`). Not the same as `chunk_id`, which is only the chunk's position in one response.
 
 **Path traversal.** An attack where a request smuggles `..` or an absolute path into something the server turns into a file path, to read files outside the intended folder. The image route avoids it twice: the URL names a record, not a file, and the stored path must still resolve inside `IMAGES_DIR` (`src/documents.py:image_file`).
 

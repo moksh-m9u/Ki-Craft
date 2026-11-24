@@ -6,9 +6,6 @@ builds per request, ``search_postgres`` applies the search type (similarity,
 MMR, or score threshold, with parameters from ``config/settings.py``), and
 ``retrieve_chunks`` is a traced run so retrieval shows up as its own child
 run inside the ``AnswerQuery`` trace.
-
-``load_vector_store`` still opens the old Chroma store for ingestion and
-``scripts/compare_search.py``; it goes when Chroma is removed (Checkpoint 6).
 """
 
 from __future__ import annotations
@@ -16,7 +13,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores.utils import maximal_marginal_relevance
@@ -24,8 +20,6 @@ from langsmith import traceable
 from sqlalchemy import Engine, Row
 
 from config.settings import (
-    CHROMA_COLLECTION_METADATA,
-    CHROMA_PERSIST_DIR,
     RETRIEVAL_FETCH_K,
     RETRIEVAL_K,
     RETRIEVAL_LAMBDA_MULT,
@@ -37,29 +31,6 @@ from src.documents import chunk_text_and_tables, document_from_row, stored_chunk
 from src.logger import get_logger
 
 logger = get_logger(__name__)
-
-
-def load_vector_store(embedding_model: Embeddings, persist_directory: str = CHROMA_PERSIST_DIR) -> Chroma:
-    """Open the Chroma store, creating it if the folder holds none.
-
-    The API reads through it and ingestion writes through it, so both open
-    the same collection the same way. ``CHROMA_COLLECTION_METADATA`` (cosine
-    distance) only takes effect when the collection is first created.
-
-    Args:
-        embedding_model: The embedding model to query with (must match the
-            one used during ingestion).
-        persist_directory: Folder of the Chroma store.
-
-    Returns:
-        The loaded Chroma vector store.
-    """
-    logger.info("Loading vector store from %s", persist_directory)
-    return Chroma(
-        persist_directory=persist_directory,
-        embedding_function=embedding_model,
-        collection_metadata=CHROMA_COLLECTION_METADATA,
-    )
 
 
 def nearest_chunks(engine: Engine, vector: list[float], n: int) -> list[Row]:

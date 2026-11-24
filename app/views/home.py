@@ -67,7 +67,7 @@ _INGESTION_STEPS: list[tuple[str, str]] = [
     ("Extract", "unstructured (hi_res) splits the PDF into text, tables (as HTML) and figures (as images); page headers, footers and logos are dropped."),
     ("Section", "Elements are grouped by heading into sections of at most 3,000 characters, so a figure stays with the text that explains it."),
     ("Summarise", "A vision model reads each section's text, tables and figures and writes a plain-text summary."),
-    ("Index", "IBM watsonx Granite turns each summary into a 768-number vector. Chroma stores it with the section's original text, tables and figure files."),
+    ("Index", "IBM watsonx Granite turns each summary into a 768-number vector. Postgres with pgvector stores it with the section's original text, tables and figure paths."),
 ]
 _QUERY_STEPS: list[tuple[str, str]] = [
     ("Search", "The question is embedded with the same model. MMR takes the 20 nearest summaries and keeps 5 that are relevant but not repetitive."),

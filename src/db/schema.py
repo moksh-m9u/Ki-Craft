@@ -1,11 +1,11 @@
-"""Postgres tables that replace the Chroma store (Checkpoint 6).
+"""Postgres tables that hold the corpus (Checkpoint 6).
 
-Where it sits: ingestion will write these tables, retrieval will search
-``chunks.embedding`` with pgvector, and ``src/browse.py`` will list documents
-and chunks from them. For now only the migration in
-``migrations/versions/`` uses this file, to create them.
+Where it sits: ingestion writes these tables (``src/ingestion/pipeline.py``),
+retrieval searches ``chunks.embedding`` with pgvector
+(``src/retrieval/search.py``), and ``src/browse.py`` lists documents and
+chunks from them. The migration in ``migrations/versions/`` creates them.
 
-The tables mirror what one Chroma record holds today:
+They replaced a Chroma store on 2026-11-24; one Chroma record mapped like this:
 
     Chroma record                      Postgres
     id (UUID)                       -> chunks.id, unchanged, so figure URLs
@@ -62,8 +62,8 @@ documents = Table(
 chunks = Table(
     "chunks",
     metadata,
-    # No server default: every chunk keeps its Chroma record id, and new chunks
-    # get theirs from ingestion, as they do today.
+    # No server default: the first chunks kept their Chroma record ids, and new
+    # chunks get theirs from ingestion (uuid4).
     Column("id", UUID(as_uuid=True), primary_key=True),
     Column("document_id", UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False),
     Column("chunk_id", Integer, nullable=False),

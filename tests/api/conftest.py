@@ -39,7 +39,6 @@ def backend(monkeypatch, tmp_path) -> FakeBackend:
     monkeypatch.setattr(src.db.connection, "create_engine", forbidden("create_engine"))
     monkeypatch.setattr(src.llm, "ChatGoogleGenerativeAI", fake.make_llm)
     monkeypatch.setattr(src.llm, "ChatOpenAI", fake.make_llm)
-    monkeypatch.setattr(src.retrieval.search, "Chroma", forbidden("Chroma"))
     monkeypatch.setattr(src.embed, "WatsonxEmbeddings", forbidden("WatsonxEmbeddings"))
 
     # A process-wide switch: it also reaches the threads TestClient and

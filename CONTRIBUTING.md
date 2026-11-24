@@ -186,12 +186,6 @@ curl -N http://127.0.0.1:8001/v1/query/stream -H 'Content-Type: application/json
 
 The full request and response shapes are in [docs/API.md](docs/API.md).
 
-Opening the Chroma store rewrites tracked files under `dbv2/chroma_db`. After running the API from a clone you intend to commit from, restore them:
-
-```bash
-git checkout -- dbv2/chroma_db
-```
-
 ## Running the dashboard
 
 ```bash
@@ -402,7 +396,6 @@ Every tunable lives in `config/settings.py`.
 | `RETRIEVAL_FETCH_K` | `20` | MMR only: candidates fetched before MMR picks `RETRIEVAL_K` (environment variable) |
 | `RETRIEVAL_LAMBDA_MULT` | `0.5` | MMR only: 1 is pure relevance, 0 is pure diversity (environment variable) |
 | `RETRIEVAL_SCORE_THRESHOLD` | `0.5` | `similarity_score_threshold` only: minimum relevance score (environment variable) |
-| `CHROMA_PERSIST_DIR` | `dbv2/chroma_db` | Vector store location |
 | `IMAGES_DIR` | `dbv2/images` | Figure files |
 | `PDF_STRATEGY` | `hi_res` | `unstructured` parsing mode |
 | `CHUNK_MAX_CHARACTERS` | `3000` | Largest chunk |
@@ -425,20 +418,20 @@ src/
   browse.py              lists the stored documents and a document's chunks in order
   tables.py              stored HTML tables -> Markdown for prompts
   logger.py              logging setup
-  ingestion/             offline: PDF -> elements -> chunks -> summaries -> Chroma
+  ingestion/             offline: PDF -> elements -> chunks -> summaries -> Postgres
     extract.py             unstructured partition_pdf
     chunk.py               chunk_by_title
     enrich.py              vision LLM summary per chunk
     export.py              chunks -> JSON export
-    pipeline.py            writes the Chroma store
+    pipeline.py            stores an export: embeds summaries, writes figure files and Postgres rows
   retrieval/
-    search.py              loads Chroma, builds the MMR retriever, retrieves
+    search.py              pgvector search (similarity, MMR, threshold) and the retriever
     prompt.py              builds the multimodal prompt, chooses and labels the figures
     generate.py            retrieves, streams the answer, counts tokens, prices, traces
 api/
   main.py                FastAPI app: CORS, lifespan, routers
   routers/               endpoints by purpose: system, retrieval, query, providers, documents, images
-  service.py             owns the store and retriever, picks the default LLM
+  service.py             owns the database engine and embedding client, picks the default LLM
   schemas.py             request and response models
   openapi_examples.py    docs text and example payloads shown at /docs
   requirements.txt       the backend's packages (used by the Dockerfile)
@@ -453,8 +446,8 @@ app/
   rag_eval_dashboard.py  Streamlit viewer for evaluation results
   requirements.txt       the dashboard's packages (used by Streamlit Community Cloud)
 migrations/              Alembic migrations that create the Postgres tables (alembic.ini at the root)
-scripts/                 command-line ingestion (scripts/ingest.py) and the one-off Chroma-to-Postgres copy
-dbv2/                    the built Chroma store and the figure images
+scripts/                 command-line ingestion (scripts/ingest.py)
+dbv2/images/             the figure files whose paths the database stores
 json/                    per-document chunk exports used by the dashboard
 data/                    source PDFs
 evals/                   evaluation questions and notes
@@ -473,7 +466,6 @@ pyproject.toml, uv.lock  every dependency, with exact versions (uv sync)
 - Run the tests before every commit. Tests never call the network: mock external clients, as `tests/test_embed.py` does.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): summary` in the imperative, with a body that explains why. Types: `feat`, `fix`, `refactor`, `docs`, `test`, `perf`, `build`, `ci`, `chore`.
 - Branch names describe the change: `feat/<feature>`, `fix/<bug>`, `refactor/<area>`.
-- Restore `dbv2/chroma_db` before committing (see [Troubleshooting](#troubleshooting)) unless the change is a deliberate re-index.
 - A new technical term goes in [docs/GLOSSARY.md](docs/GLOSSARY.md) in the same change.
 
 ## Troubleshooting
@@ -481,4 +473,3 @@ pyproject.toml, uv.lock  every dependency, with exact versions (uv sync)
 - **`uvicorn` starts the wrong Python.** Some machines have a stale Homebrew `uvicorn`. Activate `.venv` first, or call `.venv/bin/uvicorn`.
 - **A plain `uv sync` removed `mlx-vlm`.** `uv sync` makes the environment match the lock exactly, so it drops extras you did not ask for and packages installed by hand. Use `uv sync --extra local`.
 - **The Docker container cannot authenticate.** A value in `.env` has quotes; `docker run --env-file` keeps them. Remove them.
-- **`git status` shows changes under `dbv2/chroma_db` you did not make.** Opening the store rewrites them. Run `git checkout -- dbv2/chroma_db`.
