@@ -21,6 +21,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import InterfaceError, OperationalError
 
 from api.routers import documents, images, providers, query, retrieval, system
 from api.service import RAGService, StoreUnavailableError
@@ -105,6 +106,22 @@ async def llm_provider_error(request: Request, exc: LLMProviderError) -> JSONRes
 async def store_unavailable(request: Request, exc: StoreUnavailableError) -> JSONResponse:
     """The database could not be reached: 503 Service Unavailable."""
     return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+
+@app.exception_handler(OperationalError)
+@app.exception_handler(InterfaceError)
+async def database_lost(request: Request, exc: OperationalError | InterfaceError) -> JSONResponse:
+    """The database stopped answering during a request: 503, so a client knows to retry.
+
+    The startup check (``StoreUnavailableError``) catches a database that is
+    down from the start. This catches one that drops later: the network goes
+    away mid-query, or Neon closes a connection. SQLAlchemy raises
+    ``OperationalError`` for those, and ``InterfaceError`` when the connection
+    was already closed. Its message holds the SQL and its parameters, so it
+    goes to the log, not the response.
+    """
+    logger.warning("Database error on %s %s: %s", request.method, request.url.path, exc.orig)
+    return JSONResponse(status_code=503, content={"detail": "Database unavailable; try again shortly."})
 
 
 @app.exception_handler(Exception)
