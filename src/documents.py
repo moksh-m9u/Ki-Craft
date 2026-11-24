@@ -1,8 +1,8 @@
 """Read a stored chunk's original text, tables and figures from its metadata.
 
 A chunk's ``page_content`` is its summary; its ``metadata`` holds the original
-content: ``raw_text``, ``tables_html`` and ``image_paths`` (lists; JSON strings,
-as the old Chroma store kept them, are still accepted). Figures are files under
+content: ``raw_text``, ``tables_html`` and ``image_paths`` (lists, as
+:func:`document_from_row` builds them). Figures are files under
 ``IMAGES_DIR``; ``image_paths`` lists them in order.
 
 Functions:
@@ -21,7 +21,6 @@ Functions:
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -94,16 +93,6 @@ def document_from_row(row: Any) -> Document:
     )
 
 
-def _parse_json_value(raw: Any, default: Any) -> Any:
-    """Parse ``raw`` as JSON when it is a string, otherwise return it as-is."""
-    if isinstance(raw, str):
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError:
-            return default
-    return raw if raw is not None else default
-
-
 def chunk_text_and_tables(chunk: Document) -> dict:
     """Return a chunk's original text and tables without reading its figures.
 
@@ -116,7 +105,7 @@ def chunk_text_and_tables(chunk: Document) -> dict:
     metadata = chunk.metadata or {}
     return {
         "raw_text": metadata.get("raw_text", ""),
-        "tables_html": _parse_json_value(metadata.get("tables_html"), []),
+        "tables_html": list(metadata.get("tables_html") or []),
     }
 
 
@@ -127,8 +116,7 @@ def stored_image_count(chunk: Document) -> int:
 
 def stored_image_paths(metadata: dict) -> list[str]:
     """Return a record's figure paths in stored order."""
-    paths = _parse_json_value(metadata.get("image_paths"), [])
-    return [str(path) for path in paths] if isinstance(paths, list) else []
+    return [str(path) for path in metadata.get("image_paths") or []]
 
 
 def image_file(metadata: dict, position: int) -> Path | None:

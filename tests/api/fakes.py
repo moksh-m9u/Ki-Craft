@@ -44,8 +44,8 @@ def _fake_chunks() -> list[Document]:
             "source": "lm317",
             "chunk_id": 2,
             "raw_text": "Pin 1 ADJ, pin 2 VOUT, pin 3 VIN.",
-            "tables_html": json.dumps(["<table><tr><td>ADJ</td></tr></table>"]),
-            "image_paths": "[]",
+            "tables_html": ["<table><tr><td>ADJ</td></tr></table>"],
+            "image_paths": [],
         },
     )
     tlv1117 = Document(
@@ -55,8 +55,8 @@ def _fake_chunks() -> list[Document]:
             "source": "tlv1117",
             "chunk_id": 1,
             "raw_text": "Dropout 1.1 V at 800 mA.",
-            "tables_html": "[]",
-            "image_paths": json.dumps(["dbv2/images/tlv1117_c1_img0.jpg"]),
+            "tables_html": [],
+            "image_paths": ["dbv2/images/tlv1117_c1_img0.jpg"],
         },
     )
     return [lm317, tlv1117]
@@ -67,7 +67,7 @@ def _stored_chunks() -> list[Document]:
     lm317_first = Document(
         id=LM317_FIRST_ID,
         page_content="LM317 overview: 1.2 V to 37 V adjustable regulator.",
-        metadata={"source": "lm317", "chunk_id": 1, "raw_text": "", "tables_html": "[]", "image_paths": "[]"},
+        metadata={"source": "lm317", "chunk_id": 1, "raw_text": "", "tables_html": [], "image_paths": []},
     )
     return _fake_chunks() + [lm317_first]
 
@@ -93,7 +93,7 @@ class FakeStore:
         records[ESCAPING_ID] = Document(
             id=ESCAPING_ID,
             page_content="",
-            metadata={"source": "escape", "chunk_id": 1, "image_paths": json.dumps(["dbv2/images/../../secret.txt"])},
+            metadata={"source": "escape", "chunk_id": 1, "image_paths": ["dbv2/images/../../secret.txt"]},
         )
         return records
 

@@ -139,8 +139,6 @@ def _chunk(
     tables: list[str] | None = None,
 ) -> Document:
     """A stored chunk whose figure files hold the given strings as bytes."""
-    import json
-
     import src.documents
 
     paths = []
@@ -151,7 +149,7 @@ def _chunk(
     return Document(
         id=record_id,
         page_content=summary,
-        metadata={"raw_text": raw_text, "tables_html": json.dumps(tables or []), "image_paths": json.dumps(paths)}
+        metadata={"raw_text": raw_text, "tables_html": tables or [], "image_paths": paths}
         | ({"source": source} if source else {}),
     )
 
@@ -323,8 +321,6 @@ def test_choosing_figures_reads_no_file(monkeypatch):
 
 def test_figure_outside_the_images_folder_is_not_sent(_figures_root):
     """A stored path is used only if it lies inside IMAGES_DIR, as for the image endpoint."""
-    import json
-
     (_figures_root / "secret.txt").write_bytes(b"secret")
-    chunk = Document(page_content="a", metadata={"image_paths": json.dumps(["secret.txt"])})
+    chunk = Document(page_content="a", metadata={"image_paths": ["secret.txt"]})
     assert select_figures([chunk], 0) == []

@@ -288,7 +288,7 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
   1. The Neon `production` branch was filled by copying, not re-ingesting (`alembic upgrade head`, then the copy script with `DATABASE_URL_DIRECT` pointed at `production` for those two commands): 6 documents, 310 chunks, 276 figures, same record ids, so figure URLs stay the same; the read-back check found it identical to Chroma.
   2. Deleted: `scripts/chroma_to_postgres.py`, `scripts/compare_search.py` and their test, `load_vector_store`, `dbv2/chroma_db`, the `CHROMA_*` settings, `langchain-chroma` (and with it about 600 lines of `uv.lock`), and the `git checkout -- dbv2/chroma_db` notes. Git history keeps the scripts.
   3. Left for deployment: on Render, set `DATABASE_URL` to the `production` pooled string before the new image goes live (Checkpoint 9 lists it too).
-  Left over: `src/documents.py:_parse_json_value` still accepts the JSON strings Chroma stored; Postgres returns lists, so it can go along with the test fixtures that use strings.
+  The last Chroma leftover, `src/documents.py:_parse_json_value` (it accepted the JSON strings Chroma stored), was deleted the same day; Postgres returns lists.
   The work is on the branch `feat/postgres-pgvector`.
 
 **Checkpoint 5. Evaluation baseline.** Runs after Checkpoint 6, on Postgres.

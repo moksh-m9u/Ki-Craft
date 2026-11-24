@@ -1,7 +1,5 @@
 """Tests for src/documents.py: reading a stored chunk's metadata."""
 
-import json
-
 import pytest
 
 langchain_core = pytest.importorskip("langchain_core")
@@ -17,7 +15,7 @@ def _doc(metadata):
 
 
 def test_text_and_tables_are_read_from_metadata():
-    doc = _doc({"raw_text": "flat", "tables_html": '["<t/>"]', "image_paths": "[]"})
+    doc = _doc({"raw_text": "flat", "tables_html": ["<t/>"], "image_paths": []})
     assert chunk_text_and_tables(doc) == {"raw_text": "flat", "tables_html": ["<t/>"]}
 
 
@@ -26,7 +24,7 @@ def test_metadata_without_optional_keys():
 
 
 def test_figure_count_reads_no_file():
-    doc = _doc({"image_paths": json.dumps(["dbv2/images/missing_a.jpg", "dbv2/images/missing_b.jpg"])})
+    doc = _doc({"image_paths": ["dbv2/images/missing_a.jpg", "dbv2/images/missing_b.jpg"]})
     assert stored_image_count(doc) == 2
 
 
@@ -34,7 +32,7 @@ def test_image_file_finds_a_figure_inside_the_images_folder(tmp_path, monkeypatc
     (tmp_path / "dbv2" / "images").mkdir(parents=True)
     (tmp_path / "dbv2" / "images" / "fig.jpg").write_bytes(b"jpeg-bytes")
     monkeypatch.setattr(documents, "_PROJECT_ROOT", tmp_path)
-    metadata = {"image_paths": json.dumps(["dbv2/images/fig.jpg", "dbv2/images/gone.jpg", "secret.txt"])}
+    metadata = {"image_paths": ["dbv2/images/fig.jpg", "dbv2/images/gone.jpg", "secret.txt"]}
     assert image_file(metadata, 0) == tmp_path / "dbv2" / "images" / "fig.jpg"
     assert image_file(metadata, 1) is None, "a missing file"
     assert image_file(metadata, 2) is None, "a path outside the images folder"
