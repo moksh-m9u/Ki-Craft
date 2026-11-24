@@ -107,6 +107,7 @@ cp .env.example .env
 | `WATSONX_URL` | Same | Region endpoint; defaults to `https://eu-de.ml.cloud.ibm.com` |
 | `DATABASE_URL` | Postgres (Neon), pooled | From the branch's Connect dialog with connection pooling on; the host contains `-pooler` |
 | `DATABASE_URL_DIRECT` | Migrations and bulk copies | The same string with `-pooler` removed from the host |
+| `PRODUCTION_DATABASE_URL_DIRECT` | Maintainers only: copying documents to production | The `production` branch's direct string; only `scripts/copy_document.py` reads it |
 | `HF_TOKEN` | Ingestion only (chunk summaries) | Create one at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) |
 | `API_BASE_URL` | Dashboard | Where the dashboard finds the API; defaults to `http://localhost:8000` |
 | `CORS_ALLOWED_ORIGINS` | API | Comma-separated origins allowed to call the API from a browser |
@@ -245,6 +246,16 @@ python -m scripts.ingest json/*.json
 ```
 
 Chunks stored this way get new record ids, so figure URLs differ from another database's; they are stable within one database.
+
+### From dev to production
+
+The maintainers keep `.env` pointed at the `dev` branch, so ingestion, tests and experiments never touch the live data. A new document is ingested into `dev`, checked there, and then copied to `production` unchanged: the same record ids, summaries and vectors, with no embedding or summary call.
+
+```bash
+python -m scripts.copy_document new_datasheet
+```
+
+The script reads `DATABASE_URL_DIRECT` (dev) and writes `PRODUCTION_DATABASE_URL_DIRECT`. Each document is copied in one transaction. A document production already holds is skipped unless `--replace` is given. The figure files are not in the database: commit the new files in `dbv2/images/` and the export in `json/`, then redeploy.
 
 ### Migrations
 
@@ -446,7 +457,7 @@ app/
   rag_eval_dashboard.py  Streamlit viewer for evaluation results
   requirements.txt       the dashboard's packages (used by Streamlit Community Cloud)
 migrations/              Alembic migrations that create the Postgres tables (alembic.ini at the root)
-scripts/                 command-line ingestion (scripts/ingest.py)
+scripts/                 ingestion (ingest.py) and the dev-to-production copy (copy_document.py)
 dbv2/images/             the figure files whose paths the database stores
 json/                    per-document chunk exports used by the dashboard
 data/                    source PDFs

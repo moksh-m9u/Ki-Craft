@@ -1,6 +1,7 @@
-"""Postgres package: the table definitions the API, ingestion and migrations share.
+"""Postgres package: the tables, the connection, and whole-document reads and writes.
 
-``schema.py`` describes the tables. The migrations in ``migrations/`` create
-them in the database. Import from the modules directly; this file only marks
-the folder as a package.
+``schema.py`` describes the tables, ``connection.py`` opens the database, and
+``store.py`` reads and writes one document's rows. The migrations in
+``migrations/`` create the tables. Import from the modules directly; this
+file only marks the folder as a package.
 """

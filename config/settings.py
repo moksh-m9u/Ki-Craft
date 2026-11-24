@@ -71,6 +71,10 @@ JSON_EXPORT_DIR: str = "json"
 # hold one long session that a transaction pooler would split. Empty until set.
 DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 DATABASE_URL_DIRECT: str = os.getenv("DATABASE_URL_DIRECT", "")
+# The production branch's direct string, read only by scripts/copy_document.py,
+# which copies documents from DATABASE_URL_DIRECT (dev) into it. Nothing else
+# writes to production, so .env can keep pointing at dev.
+PRODUCTION_DATABASE_URL_DIRECT: str = os.getenv("PRODUCTION_DATABASE_URL_DIRECT", "")
 
 # Retrieval settings
 # How the vector store picks chunks for a question. These are the three

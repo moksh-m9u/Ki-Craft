@@ -102,6 +102,7 @@ src/retrieval/
   citations.py            read the finished answer's [C1] and [IMG1] citations and check them
   generate.py             retrieve, stream the answer from the model, count tokens, price, trace
 src/db/connection.py    Neon URL -> SQLAlchemy URL for psycopg 3
+src/db/store.py         one document's rows: is_stored, write_document (one transaction), read_document, copy_document
 src/db/schema.py        Postgres tables (documents, chunks with vector(768), images), SQLAlchemy Core
 migrations/             Alembic migrations that create those tables (alembic.ini at the root)
 src/documents.py        turns stored chunk metadata back into text, tables, images
@@ -120,7 +121,8 @@ app/state.py            session state defaults, kept widget values, the loaded d
 app/api_client.py       the only place the UI talks to the backend
 app/rag_eval_dashboard.py  Streamlit viewer for evaluation results
 app/requirements.txt    the packages Streamlit Community Cloud installs for the dashboard
-scripts/                CLI ingestion: PDFs or json/ exports into Postgres (scripts/ingest.py)
+scripts/                CLI ingestion: PDFs or json/ exports into Postgres (scripts/ingest.py);
+                        copy_document.py copies documents from dev to production unchanged
 dbv2/images/            the figure files whose paths the database stores
 json/                   per-document chunk exports (summaries included); Postgres can be rebuilt from them
 evals/                  evaluation questions and notes
@@ -168,13 +170,13 @@ python -m scripts.ingest data/ --backend local
 Notes:
 
 - Tests must not call the network. Mock external clients (see `tests/test_embed.py`).
-- `.env` points `DATABASE_URL` and `DATABASE_URL_DIRECT` at the Neon `dev` branch. Live checks and ingestion runs use `dev`; `production` is what the deployed API reads and is written only on purpose.
+- `.env` points `DATABASE_URL` and `DATABASE_URL_DIRECT` at the Neon `dev` branch. Live checks and ingestion runs use `dev`; `production` is what the deployed API reads, and new documents reach it only through `python -m scripts.copy_document <source>` (no re-embedding, same record ids).
 - Live checks load credentials from `.env` with `python-dotenv`. Never print, log, or read secret values. Refer to them only by variable name.
 - Streamlit copies root-level keys from `.streamlit/secrets.toml` into `os.environ` and overwrites existing values. Keep that file out of git (it is ignored).
 
 ## Environment variables
 
-`GEMINI_API_KEY`, `HF_TOKEN`, `WATSONX_API_KEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL`, `DATABASE_URL` (Neon, pooled), `DATABASE_URL_DIRECT` (Neon, direct; migrations and bulk copies), `API_BASE_URL`, `CORS_ALLOWED_ORIGINS`, `GENERATION_MAX_TOKENS`, and the LangSmith variables (`LANGSMITH_API_KEY`, `LANGSMITH_TRACING`, `LANGSMITH_PROJECT`). See `config/settings.py` for defaults. `LANGSMITH_TRACING` is the one tracing switch: when it is unset the legacy `LANGCHAIN_TRACING_V2` is used, and `config/settings.py` writes the result to `LANGSMITH_TRACING_V2`, which the langsmith library checks first.
+`GEMINI_API_KEY`, `HF_TOKEN`, `WATSONX_API_KEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL`, `DATABASE_URL` (Neon, pooled), `DATABASE_URL_DIRECT` (Neon, direct; migrations and bulk copies), `PRODUCTION_DATABASE_URL_DIRECT` (read only by `scripts/copy_document.py`), `API_BASE_URL`, `CORS_ALLOWED_ORIGINS`, `GENERATION_MAX_TOKENS`, and the LangSmith variables (`LANGSMITH_API_KEY`, `LANGSMITH_TRACING`, `LANGSMITH_PROJECT`). See `config/settings.py` for defaults. `LANGSMITH_TRACING` is the one tracing switch: when it is unset the legacy `LANGCHAIN_TRACING_V2` is used, and `config/settings.py` writes the result to `LANGSMITH_TRACING_V2`, which the langsmith library checks first.
 
 Ingestion summaries: `ENHANCEMENT_BACKEND` (`huggingface` or `local`) and the `ENHANCEMENT_*` and `LOCAL_ENHANCEMENT_*` tunables; see the ingestion section of `CONTRIBUTING.md`.
 
@@ -289,6 +291,7 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
   2. Deleted: `scripts/chroma_to_postgres.py`, `scripts/compare_search.py` and their test, `load_vector_store`, `dbv2/chroma_db`, the `CHROMA_*` settings, `langchain-chroma` (and with it about 600 lines of `uv.lock`), and the `git checkout -- dbv2/chroma_db` notes. Git history keeps the scripts.
   3. Left for deployment: on Render, set `DATABASE_URL` to the `production` pooled string before the new image goes live (Checkpoint 9 lists it too).
   The last Chroma leftover, `src/documents.py:_parse_json_value` (it accepted the JSON strings Chroma stored), was deleted the same day; Postgres returns lists.
+  Added 2026-11-24: `scripts/copy_document.py` copies documents from `dev` to `production` row for row (`src/db/store.py:copy_document`, one transaction per document, refuses an existing one without `--replace`), so new datasheets are embedded once. `is_stored` and `write_document` moved from `src/ingestion/pipeline.py` to `src/db/store.py`, which both use. Checked live with a throwaway two-chunk document: copied identical (ids, text, tables, figures, vectors), skipped on a second run, replaced with `--replace`, an unknown name failed, then deleted from both branches. A connection that drops during a request is now a 503, not a 500 (`api/main.py:database_lost`).
   The work is on the branch `feat/postgres-pgvector`.
 
 **Checkpoint 5. Evaluation baseline.** Runs after Checkpoint 6, on Postgres.

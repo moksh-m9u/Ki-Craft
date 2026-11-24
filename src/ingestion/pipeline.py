@@ -5,9 +5,9 @@ original text, tables and figures (base64). :func:`rows_from_export` writes
 each figure to a file under the images folder and turns the export into rows
 for the ``chunks`` and ``images`` tables (``src/db/schema.py``).
 
-:func:`store_export` is the one way chunks reach the database: it checks an
+:func:`store_export` is the one way new chunks reach the database: it checks an
 export, embeds its summaries, writes the figure files and stores the rows in
-one transaction. :func:`run_complete_ingestion_pipeline` turns one PDF into an
+one transaction (``src/db/store.py:write_document``). :func:`run_complete_ingestion_pipeline` turns one PDF into an
 export and then hands it to :func:`store_export`, so a PDF and an existing
 export are stored the same way.
 
@@ -25,7 +25,7 @@ import uuid
 from pathlib import Path
 
 from langsmith import traceable
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Engine
 
 from config.settings import (
     DATABASE_URL_DIRECT,
@@ -34,7 +34,7 @@ from config.settings import (
     JSON_EXPORT_DIR,
 )
 from src.db.connection import create_db_engine
-from src.db.schema import chunks, documents, images
+from src.db.store import is_stored, write_document
 from src.embed import load_embedding_model
 from src.ingestion.chunk import create_chunks_by_title
 from src.ingestion.enrich import summarise_chunks
@@ -106,29 +106,6 @@ def _check_export(export: list, source: str) -> None:
                 base64.b64decode(b64, validate=True)
             except binascii.Error as exc:
                 raise ValueError(f"{source}: chunk {chunk['chunk_id']} has a figure that does not decode") from exc
-
-
-def is_stored(engine: Engine, source: str) -> bool:
-    """Whether the database already holds a document named ``source``."""
-    with engine.connect() as connection:
-        return connection.execute(select(documents.c.id).where(documents.c.source == source)).first() is not None
-
-
-def write_document(engine: Engine, source: str, chunk_rows: list[dict], image_rows: list[dict]) -> None:
-    """Store one document's rows in one transaction, replacing any it already has.
-
-    Deleting the ``documents`` row deletes its chunks and their figure rows
-    too (``ON DELETE CASCADE``). If an insert fails, the transaction rolls
-    back and the old document is still there.
-    """
-    with engine.begin() as connection:
-        connection.execute(delete(documents).where(documents.c.source == source))
-        document_id = connection.execute(
-            documents.insert().values(source=source).returning(documents.c.id)
-        ).scalar_one()
-        connection.execute(chunks.insert(), [{**row, "document_id": document_id} for row in chunk_rows])
-        if image_rows:
-            connection.execute(images.insert(), image_rows)
 
 
 @traceable(run_type="chain", name="StoreExport")
