@@ -1,7 +1,7 @@
 """Shared pytest configuration.
 
 Skips tests marked ``live`` unless the run selects them with ``-m live``, so
-the default suite never needs keys, the network, or the real Chroma store.
+the default suite never needs keys, the network, or the real database.
 """
 
 from __future__ import annotations

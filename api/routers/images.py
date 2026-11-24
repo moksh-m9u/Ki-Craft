@@ -2,7 +2,7 @@
 of a stored chunk from disk.
 
 The URL names a record and a position, never a file: the path is looked up in
-the vector store (``api/service.py:RAGService.image``) and must lie inside
+the ``images`` table (``api/service.py:RAGService.image``) and must lie inside
 ``IMAGES_DIR``. Because a record's figures never change, the URL is stable and
 can be cached.
 """

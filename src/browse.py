@@ -1,32 +1,32 @@
-"""Browse the stored corpus: which documents are indexed, and their chunks in order.
+"""Browse the stored corpus: which documents exist, their chunks in order, one figure's file.
 
 Sits beside retrieval, not inside it: these reads use no embedding and no
-vector search. ``api/service.py`` calls them for ``GET /v1/documents`` and
-``GET /v1/documents/{document_id}/chunks``, which the dashboard's Chunk
-Explorer, Compare and Analytics pages use instead of reading ``json/``.
+vector search, only plain SQL on the Postgres tables (``src/db/schema.py``).
+``api/service.py`` calls them for ``GET /v1/documents``,
+``GET /v1/documents/{document_id}/chunks`` and
+``GET /v1/images/{record_id}/{position}``; the dashboard's Chunk Explorer,
+Compare and Analytics pages read the first two.
 
 A document is identified by its ``source``, the PDF's file name without
 ``.pdf`` (``lm317``). Chunks come back in reading order, by the ``chunk_id``
-stored at ingestion, which counts from 1 within each document.
-
-The store is Chroma today. When Postgres and pgvector replace it
-(Checkpoint 6), these two functions become SQL queries (``GROUP BY source``,
-and ``ORDER BY chunk_id LIMIT ... OFFSET ...``) and their callers do not change.
+stored at ingestion, which counts from 1 within each document. The database
+counts, sorts and pages; Python only shapes the result.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from langchain_core.documents import Document
+from sqlalchemy import Engine, func, select
 
-from src.documents import chunk_text_and_tables, stored_image_paths
+from src.db.schema import chunks, documents, images
+from src.documents import document_from_row, stored_chunks_query
 
 
 @dataclass(frozen=True)
 class DocumentSummary:
-    """One indexed document and how much it holds.
+    """One stored document and how much it holds.
 
     Attributes:
         id: The document's ``source`` name, such as ``lm317``.
@@ -41,55 +41,75 @@ class DocumentSummary:
     table_count: int
 
 
-def list_documents(db: Any) -> list[DocumentSummary]:
-    """Summarise every indexed document, sorted by name.
+def list_documents(engine: Engine) -> list[DocumentSummary]:
+    """Summarise every stored document, sorted by name.
 
-    Reads every record's metadata once; no text, summary or vector is loaded.
+    One query: per document, count its chunks, add up the tables in each
+    chunk's ``tables_html`` array, and count its figures. Figures are counted
+    in a subquery per chunk, because joining ``images`` directly would repeat
+    each chunk once per figure and inflate the other counts.
 
     Args:
-        db: The loaded vector store (anything with Chroma's ``get``).
+        engine: The Postgres engine.
 
     Returns:
-        One summary per distinct ``source``. Records without a ``source``
-        are left out, since no document can be named for them.
+        One summary per document, including a document with no chunks.
     """
-    found = db.get(include=["metadatas"])
-    counts: dict[str, list[int]] = {}
-    for metadata in found.get("metadatas") or []:
-        metadata = metadata or {}
-        source = metadata.get("source")
-        if not source:
-            continue
-        tables = chunk_text_and_tables(Document(page_content="", metadata=metadata))["tables_html"]
-        chunks, images, table_total = counts.get(source, [0, 0, 0])
-        counts[source] = [chunks + 1, images + len(stored_image_paths(metadata)), table_total + len(tables)]
-    return [DocumentSummary(source, *counts[source]) for source in sorted(counts)]
+    figures_per_chunk = (
+        select(func.count()).where(images.c.chunk_id == chunks.c.id).scalar_subquery()
+    )
+    query = (
+        select(
+            documents.c.source,
+            func.count(chunks.c.id),
+            func.coalesce(func.sum(figures_per_chunk), 0),
+            func.coalesce(func.sum(func.cardinality(chunks.c.tables_html)), 0),
+        )
+        .select_from(documents)
+        .outerjoin(chunks, chunks.c.document_id == documents.c.id)
+        .group_by(documents.c.source)
+        .order_by(documents.c.source)
+    )
+    with engine.connect() as connection:
+        return [DocumentSummary(source, int(n), int(f), int(t)) for source, n, f, t in connection.execute(query)]
 
 
-def document_chunks(db: Any, document_id: str, offset: int, limit: int) -> tuple[list[Document], int]:
+def document_chunks(engine: Engine, document_id: str, offset: int, limit: int) -> tuple[list[Document], int]:
     """Return one page of a document's chunks, in reading order.
 
-    Chroma can filter by metadata but cannot sort, so every chunk of the
-    document is read, sorted by ``chunk_id``, then sliced. The largest
-    document holds under 100 chunks, so this stays cheap.
-
     Args:
-        db: The loaded vector store (anything with Chroma's ``get``).
+        engine: The Postgres engine.
         document_id: The document's ``source`` name.
         offset: Chunks to skip, counted from the start of the document.
         limit: Most chunks to return.
 
     Returns:
-        ``(chunks, total)``: the page of chunks as ``Document`` objects (id,
-        summary as ``page_content``, stored metadata), and how many chunks
-        the document holds. ``total`` is 0 for an unknown document.
+        ``(chunks, total)``: the page as ``Document`` objects (record id,
+        summary as ``page_content``, original content in ``metadata``), and how
+        many chunks the document holds. ``total`` is 0 for an unknown document.
     """
-    found = db.get(where={"source": document_id}, include=["documents", "metadatas"])
-    chunks = [
-        Document(id=record_id, page_content=summary or "", metadata=metadata or {})
-        for record_id, summary, metadata in zip(
-            found.get("ids") or [], found.get("documents") or [], found.get("metadatas") or []
-        )
-    ]
-    chunks.sort(key=lambda chunk: chunk.metadata.get("chunk_id") or 0)
-    return chunks[offset : offset + limit], len(chunks)
+    in_document = documents.c.source == document_id
+    count = select(func.count()).select_from(chunks.join(documents)).where(in_document)
+    page = stored_chunks_query().where(in_document).order_by(chunks.c.chunk_id).offset(offset).limit(limit)
+    with engine.connect() as connection:
+        total = connection.execute(count).scalar_one()
+        rows = list(connection.execute(page)) if total else []
+    return [document_from_row(row) for row in rows], total
+
+
+def figure_path(engine: Engine, record_id: str, position: int) -> str | None:
+    """The stored path of one figure, or None when the chunk or position does not exist.
+
+    Args:
+        engine: The Postgres engine.
+        record_id: The chunk's record id (a UUID string).
+        position: 0-based position of the figure within the chunk.
+
+    Returns:
+        The path as stored at ingestion, relative to the repository root. The
+        caller still checks it lies inside ``IMAGES_DIR``
+        (``src/documents.py:figure_file``).
+    """
+    query = select(images.c.path).where(images.c.chunk_id == record_id, images.c.position == position)
+    with engine.connect() as connection:
+        return connection.execute(query).scalar_one_or_none()

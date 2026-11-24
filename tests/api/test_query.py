@@ -16,7 +16,7 @@ def test_query_with_broken_store_is_503(client, backend):
     backend.store_error = "store missing"
     response = client.post("/v1/query", json={"query": "LM317 pins"})
     assert response.status_code == 503
-    assert response.json() == {"detail": "Vector store unavailable: store missing"}
+    assert response.json() == {"detail": "Database unavailable: store missing"}
 
 def test_query_returns_answer_and_usage(client, backend):
     response = client.post("/v1/query", json={"query": "LM317 pins", "top_k": 2})

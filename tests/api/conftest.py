@@ -7,12 +7,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 import api.service
+import src.db.connection
 import src.documents
 import src.embed
 import src.llm
 import src.retrieval.search
 from api.main import app
-from tests.api.fakes import JPEG_BYTES, FakeBackend, forbidden
+from tests.api.fakes import JPEG_BYTES, FakeBackend, FakeStore, forbidden
 
 
 @pytest.fixture
@@ -28,10 +29,16 @@ def backend(monkeypatch, tmp_path) -> FakeBackend:
     (tmp_path / "secret.txt").write_text("outside the images folder")
     monkeypatch.setattr(src.documents, "_PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(api.service, "load_embedding_model", lambda: "fake-embeddings")
-    monkeypatch.setattr(api.service, "load_vector_store", fake.load_store)
+    store = FakeStore()
+    monkeypatch.setattr(api.service, "create_db_engine", lambda url: "fake-engine")
+    monkeypatch.setattr(api.service, "ping", fake.ping)
+    monkeypatch.setattr(api.service, "PostgresRetriever", fake.retriever)
+    monkeypatch.setattr(api.service, "list_documents", store.list_documents)
+    monkeypatch.setattr(api.service, "document_chunks", store.document_chunks)
+    monkeypatch.setattr(api.service, "figure_path", store.figure_path)
+    monkeypatch.setattr(src.db.connection, "create_engine", forbidden("create_engine"))
     monkeypatch.setattr(src.llm, "ChatGoogleGenerativeAI", fake.make_llm)
     monkeypatch.setattr(src.llm, "ChatOpenAI", fake.make_llm)
-    monkeypatch.setattr(src.retrieval.search, "Chroma", forbidden("Chroma"))
     monkeypatch.setattr(src.embed, "WatsonxEmbeddings", forbidden("WatsonxEmbeddings"))
 
     # A process-wide switch: it also reaches the threads TestClient and

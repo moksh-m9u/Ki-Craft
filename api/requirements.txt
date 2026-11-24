@@ -14,7 +14,12 @@ langsmith>=0.9
 pydantic>=2.0
 
 langchain-core>=0.3
-langchain-chroma>=0.2
+
+# Postgres: SQLAlchemy Core builds the queries, psycopg 3 is the driver,
+# pgvector adds the vector column type (it brings numpy, used by MMR).
+sqlalchemy>=2.0
+psycopg[binary]>=3.2
+pgvector>=0.3
 langchain-google-genai>=2.0
 langchain-openai>=0.3
 langchain-ibm>=1.1

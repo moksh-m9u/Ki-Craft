@@ -6,6 +6,7 @@ The app runs with fakes for the store and the models; see ``conftest.py``.
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 
 import src.documents
 from api.main import app
@@ -82,6 +83,20 @@ def test_stored_path_outside_the_images_folder_is_not_served(client):
 def test_image_with_broken_store_is_503(client, backend):
     backend.store_error = "store missing"
     assert client.get(f"/v1/images/{TLV1117_ID}/0").status_code == 503
+
+def test_database_lost_mid_request_is_503_without_the_sql(client, monkeypatch):
+    """A connection that drops after startup is a 503 the client can retry, not a 500."""
+    import api.service
+
+    def lost(*args):
+        raise OperationalError("SELECT images.path FROM images", {"chunk_id_1": "x"}, Exception("No route to host"))
+
+    monkeypatch.setattr(api.service, "figure_path", lost)
+    response = client.get(f"/v1/images/{TLV1117_ID}/0")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Database unavailable; try again shortly."}
+    assert "SELECT" not in response.text
+
 
 def test_retrieve_does_not_take_anllm_body(client):
     """Retrieval never calls a model, so its body has no ``llm`` field."""

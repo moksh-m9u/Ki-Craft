@@ -58,7 +58,7 @@ class _FakeRetriever:
         return [
             Document(
                 page_content=f"summary {i}",
-                metadata={"raw_text": "", "tables_html": "[]", "image_paths": "[]"},
+                metadata={"raw_text": "", "tables_html": [], "image_paths": []},
             )
             for i in range(3)
         ]

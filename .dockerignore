@@ -8,8 +8,7 @@
 !src
 !config
 
-# The Chroma store (dbv2/chroma_db) and the figure JPEGs (dbv2/images) that
-# stored chunk metadata points at.
+# The figure JPEGs (dbv2/images) whose paths the database stores.
 !dbv2
 
 # Re-exclude build litter inside the folders allowed above.

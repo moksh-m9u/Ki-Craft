@@ -1,4 +1,4 @@
-"""Offline package: PDF to chunks, summaries and Chroma records.
+"""Offline package: PDF to chunks, summaries and Postgres rows.
 
 ``extract.py`` partitions the PDF, ``chunk.py`` groups elements by title,
 ``enrich.py`` writes a summary per chunk, ``export.py`` saves the JSON export

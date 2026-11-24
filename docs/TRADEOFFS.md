@@ -15,9 +15,9 @@ A chosen option is not frozen. When an agent works on that area it should still 
 
 ## The system in one paragraph
 
-Ingestion is offline. A PDF is partitioned into elements (text, tables, images) by `unstructured`. The elements are grouped into chunks by section title, and a vision LLM writes one searchable summary per chunk. Only the summary is embedded (IBM watsonx Granite, 768 dimensions) and stored in Chroma. The original text, the tables (as HTML), and the image paths ride along as metadata.
+Ingestion is offline. A PDF is partitioned into elements (text, tables, images) by `unstructured`. The elements are grouped into chunks by section title, and a vision LLM writes one searchable summary per chunk. Only the summary is embedded (IBM watsonx Granite, 768 dimensions) and stored in Postgres with pgvector (Chroma until 2026-11-23). The original text, the tables (as HTML) and the figure paths are stored in the same rows; the figure files stay on disk.
 
-At query time the question is embedded and Chroma returns 5 diverse chunks (MMR over 20 candidates). The original text, tables, and images are rebuilt from metadata and sent to Gemini as a multimodal prompt. FastAPI serves this as `/v1/retrieve`, `/v1/query` (an optional `llm` object picks the model), and `/v1/query/stream` (SSE), and Streamlit is the UI.
+At query time the question is embedded and pgvector returns 5 diverse chunks (MMR over the 20 nearest by cosine distance). The original text, tables, and images are read back with them and sent to Gemini as a multimodal prompt. FastAPI serves this as `/v1/retrieve`, `/v1/query` (an optional `llm` object picks the model), and `/v1/query/stream` (SSE), and Streamlit is the UI.
 
 The central design idea is **index the summary, answer from the original**. Summaries are good for matching questions. Originals are good for exact numbers.
 
@@ -119,7 +119,7 @@ The local backend is built for long unattended runs (for example a folder of PDF
 
 Before 2026-11-16 a failed call silently stored the chunk's first 300 characters as its summary. That hid a dead provider: a whole document could be indexed with placeholder summaries and nothing would say so. Failing loudly is safer for a batch job.
 
-The summarizer is needed only for **new** documents. The existing 270 summaries are stored in Chroma and in `json/`, and they move to Postgres as they are (section 5).
+The summarizer is needed only for **new** documents. The existing summaries are stored in Postgres and in `json/`, and they move to Postgres as they are (section 5).
 
 **How to defend it:** "Summaries are an index, not a source. They translate tables and figures into the language people ask in, which raises recall, and the generator still reads the original so a bad summary costs recall, never correctness. Summaries are produced once and stored, so losing a provider never forces re-summarizing the corpus."
 
@@ -156,13 +156,13 @@ A known weakness of every dense embedder: part numbers (`LM2596S-5.0`) and exact
 
 **Decided (2026-11-12): Postgres + pgvector**, replacing Chroma and also holding application data.
 
-**Today:** Chroma, persisted as files in `dbv2/chroma_db`, cosine HNSW. It is baked into the Docker image at build time.
+**Today (2026-11-23):** Postgres with pgvector on Neon. The API and ingestion read and write only Postgres; the `production` branch was filled by copying the Chroma store on 2026-11-24, and the Chroma files were then deleted.
 
 | Option | Strengths | Weaknesses |
 |---|---|---|
-| Chroma embedded (current) | Zero ops; one directory; perfect for a read-only demo corpus | No concurrent writers; the store lives inside the container, so uploads are lost on redeploy; no joins with application data |
+| Chroma embedded (until 2026-11-23) | Zero ops; one directory; perfect for a read-only demo corpus | No concurrent writers; the store lives inside the container, so uploads are lost on redeploy; no joins with application data |
 | Chroma on a Railway volume | Uploads survive redeploys | Volumes force one replica and cause downtime on redeploy; still no relational data |
-| Postgres + pgvector (chosen) | One database for vectors and application data; SQL joins ("chunks of documents this user uploaded"); transactions; full-text search for hybrid retrieval; HNSW up to 2,000 dimensions; managed backups | You manage indexes and migrations; slightly more setup |
+| Postgres + pgvector (chosen, in use) | One database for vectors and application data; SQL joins ("chunks of documents this user uploaded"); transactions; full-text search for hybrid retrieval; HNSW up to 2,000 dimensions; managed backups | You manage indexes and migrations; slightly more setup |
 | Qdrant, Weaviate, Pinecone | Built for vectors: filtering, quantization, scale | A second database next to Postgres anyway; vendor or ops cost |
 
 The deciding factor is the upload feature. Once users upload documents, we need document records, job status, chat history, the cache, and later users. That is relational data, and it must live in a real database anyway. With pgvector the chunks live in the same database, so deleting a document deletes its vectors in one transaction, and hybrid search is a single SQL query. At our scale (thousands of chunks, not hundreds of millions) pgvector's performance is not a concern.
@@ -178,12 +178,13 @@ Each Chroma record already holds everything a pgvector row needs:
 | `embedding` (768 floats) | `chunks.embedding vector(768)` |
 | `metadata.raw_text`, `metadata.tables_html` | `chunks.raw_text`, `chunks.tables_html` |
 | `metadata.image_paths` | one row per path in `images` |
-| `metadata.chunk_id`, `has_table`, `has_image` | `chunks` columns (the flags can become computed) |
-| `metadata.source` | `documents.name`, referenced by `chunks.document_id` |
+| `metadata.chunk_id` | `chunks.chunk_id` |
+| `has_table`, `has_image` | not stored; worked out from `tables_html` and `images` |
+| `metadata.source` | `documents.source`, referenced by `chunks.document_id` |
 
 So the migration is a one-off copy: `collection.get(include=["documents", "embeddings", "metadatas"])` and a bulk insert. It needs **no summarizer and no embedding calls**, because the embedding model stays the same. Figure JPEGs stay on disk under `dbv2/images` and are referenced by path.
 
-`json/` is a second, independent copy of the summaries. If the Chroma files were ever lost, Postgres could be rebuilt from `json/` with only embedding calls (cheap), still without a summarizer.
+`json/` is a second, independent copy of the summaries. If the database were ever lost, Postgres could be rebuilt from `json/` with only embedding calls (cheap), still without a summarizer.
 
 What would force real re-work:
 
@@ -191,11 +192,15 @@ What would force real re-work:
 - **Changing chunk boundaries** (a different chunk size, or page-level chunks) means new chunks, so new summaries. This is the only case that needs the summarizer for the existing corpus.
 - **Adding page numbers and bounding boxes** to existing chunks needs re-extraction with `unstructured`. If chunk boundaries stay the same, the old summaries can be reused.
 
-Verification: run the evaluation set against Chroma and against pgvector. Identical vectors and the same distance metric (cosine) should give the same top-k, apart from approximate-search tie-breaks.
+Verification, done 2026-11-23:
 
-**How to defend it:** "Chroma was right for a fixed corpus baked into an image. Uploads turn this into a multi-document, stateful system, and keeping vectors next to the document records in Postgres removes a whole class of consistency bugs. Because summaries and embeddings are stored artifacts, the migration was a data copy, not a rebuild, and I proved it with the evaluation set."
+- The copy script (`scripts/chroma_to_postgres.py`, deleted afterwards; see git history) read every row back after the copy: ids, text, tables, figure paths and embeddings were identical, bit for bit.
+- A comparison script (`scripts/compare_search.py`, also deleted) sent the 76 golden-set questions to both stores with the same question embedding. The final 5 after MMR matched on all 76, in order; the nearest 20 matched on 75, and the 76th had two chunks at exactly the same distance at ranks 20 and 21. Postgres breaks such ties by record id.
+- One real difference was found and fixed on the way: LangChain's Chroma returns MMR's picks in nearest-first order, not in the order MMR picks them. That order decides the `C1`..`C5` labels and which figures fit the image cap, so `search_postgres` sorts the same way.
 
-**Status:** Checkpoint 6. The host is still to decide.
+**How to defend it:** "Chroma was right for a fixed corpus baked into an image. Uploads turn this into a multi-document, stateful system, and keeping vectors next to the document records in Postgres removes a whole class of consistency bugs. Because summaries and embeddings are stored artifacts, the migration was a data copy, not a rebuild, and I proved it by comparing what both stores return for the same 76 questions."
+
+**Status:** Checkpoint 6 done (2026-11-24): reads and ingestion run on Postgres, `dev` and `production` hold the same data, and Chroma is deleted.
 
 ## 6. Retrieval
 
@@ -273,7 +278,7 @@ The default and custom-provider paths are one function that receives an LLM obje
 
 The API key in the `llm` object travels in the request body over HTTPS. It must never be logged or stored, and it must never appear in traces. Enforced 2026-11-16: the field is a Pydantic `SecretStr`, 422 bodies do not echo rejected values, and offline tests check that the key reaches neither the logs nor the trace runs of a real `ChatOpenAI` client.
 
-**Decided (2026-11-13): a `/v1` prefix** on every endpoint except `/` and `/health`. It lets the API change later (`/v2`) without breaking clients, at the cost of slightly longer URLs. Health stays unversioned because uptime probes and Railway's health check should not break when the API version changes.
+**Decided (2026-11-13): a `/v1` prefix** on every endpoint except `/` and `/health`. It lets the API change later (`/v2`) without breaking clients, at the cost of slightly longer URLs. Health stays unversioned because uptime probes and Render's health check should not break when the API version changes.
 
 ### Planned endpoints
 
@@ -390,8 +395,9 @@ Hosting options:
 
 | Option | Strengths | Weaknesses |
 |---|---|---|
-| Railway Postgres (chosen, tentative) | Same platform as the API; private networking | pgvector must be enabled (use the pgvector template image); backups need setting up |
-| Neon | Serverless Postgres, pgvector built in, point-in-time restore, branching (a throwaway copy of the database per test), generous free tier | Cold start of a second or so on the free tier after idle |
+| Railway Postgres (not pursued) | Same platform as the API would have been; private networking | The API runs on Render, so no private network; the free offer is a one-month trial; pgvector needs the template image |
+| Render Postgres (not pursued) | Same platform as the API; internal network, no public hop | The free database expires after a short period; paid plans for a lasting one |
+| Neon (chosen) | Serverless Postgres, pgvector built in, point-in-time restore, branching (a throwaway copy of the database per test), generous free tier | Cold start of a second or so on the free tier after idle |
 | Supabase | Postgres plus pgvector plus auth and file storage (useful for uploaded PDFs and later users) | More platform than we need now; free projects pause after a week idle |
 
 Migrations with Alembic so the schema is versioned in git. Use SQLAlchemy Core or a thin repository module, not a heavy ORM, so queries stay readable.
@@ -400,7 +406,9 @@ Migrations with Alembic so the schema is versioned in git. Use SQLAlchemy Core o
 
 **Owner (2026-11-13):** Railway Postgres, tentatively, because the API is planned for Railway too. Hosting as a whole is still open and will be discussed before Checkpoint 6.
 
-**Status:** Checkpoint 6. Host tentatively Railway Postgres.
+**Owner (2026-11-22):** Neon. The API is on Render, not Railway, so Railway's private networking no longer applies, and Neon's free plan lasts while Railway's is a one-month trial. Put the Neon project in the same region as the Render service, and use the pooled connection string (prepared statements off with psycopg 3).
+
+**Status:** Checkpoint 6. Host: Neon.
 
 ## 11. Semantic cache and router
 
@@ -429,7 +437,7 @@ LangSmith is good for inspecting single requests. It does not replace an evaluat
 
 ## 13. Deployment
 
-**Today:** a Docker image on Railway with the Chroma store copied in at build time. The Railway service is currently down. Streamlit Cloud hosts the UI.
+**Today:** a Docker image on Render (on Railway until 2026-11) holding the API code and the figure files in `dbv2/images`. The data lives in Postgres on Neon, reached with `DATABASE_URL`. Streamlit Cloud hosts the UI.
 
 Until 2026-11-13 the image also installed CPU torch, transformers, and the OpenCV system libraries. They were left over from the local embedding model. Embeddings are now a watsonx.ai API call and nothing in the backend imports any of them, so they were removed.
 
@@ -438,7 +446,7 @@ After the migration the API container becomes stateless: vectors and data live i
 | Option for figure images and uploaded PDFs | Strengths | Weaknesses |
 |---|---|---|
 | Baked into the image (current, for the fixed corpus) | Simple, reproducible | New uploads cannot be stored |
-| Railway volume | Uploads persist | Single replica; redeploy downtime |
+| Persistent disk (Render or Railway) | Uploads persist | Single replica; redeploy downtime |
 | Object storage (S3, Cloudflare R2, Supabase Storage) | Stateless API; any number of replicas | One more service and credentials |
 
 ### Where figure images live: files, not database rows
@@ -466,12 +474,12 @@ Clients never notice any of these changes.
 **Status:**
 - Removed torch, transformers, and the OpenCV system libraries (Checkpoint 1, done).
 - `.dockerignore` is an allowlist, so the image holds only `api/`, `src/`, `config/`, and `dbv2/`; 1.34 GB down to 1.17 GB (Checkpoint 1, done).
-- Decide image and PDF storage with uploads (Checkpoint 7).
-- Restore Railway (Checkpoint 9).
+- Decide image and PDF storage with uploads (Checkpoint 7). Owner asked on 2026-11-23 whether figures should move into Postgres; the answer recorded here stands: bytes go to object storage (Cloudflare R2, S3 or Supabase Storage) when uploads arrive, `images.path` becomes a storage key, and the database never holds the bytes. Until then the shipped figures stay in `dbv2/images`, baked into the image.
+- Set the database variables on Render (Checkpoint 9).
 
 ## 14. Testing and evaluation
 
-**Today:** 29 pytest tests that mock external services, plus `evals/testing.json` and an evaluation dashboard.
+**Today:** 29 pytest tests that mock external services, plus `evals/golden_set.json` (76 questions); the old `evals/testing.json` and its dashboard were deleted on 2026-11-24.
 
 Unit tests prove the code does what it says. They do not prove answers are right. The evaluation set does that: for each question, the expected document, the expected page or chunk, and the expected answer.
 
@@ -497,7 +505,7 @@ Out of scope for this phase. The current flow is a straight line (retrieve, then
 
 ## Open decisions
 
-1. Database host: tentatively Railway Postgres; hosting as a whole still to discuss (Checkpoint 6).
+1. Database host: decided 2026-11-22, Neon (section 10).
 2. Summarizer for new uploads: research a hosted multimodal model, a local vision model, and multi-vector embeddings (section 3, Checkpoint 7).
 3. Hosted Parse profile, `balanced` or `best`, measured on the evaluation set (section 1, Checkpoint 7).
 4. Storage for uploaded PDFs and figure images: a volume or object storage (Checkpoint 7).

@@ -3,9 +3,8 @@
 Skipped unless selected with ``-m live`` (see ``tests/conftest.py``). They
 check status codes and response shapes only, never answer wording.
 
-Running them opens the real Chroma store, which rewrites tracked files under
-``dbv2/chroma_db``. Restore them afterwards with
-``git checkout -- dbv2/chroma_db``.
+They read the database ``DATABASE_URL`` points at (the Neon ``dev`` branch
+in ``.env``) and change nothing in it.
 
 Each run makes one Gemini call (``/v1/query`` with ``max_images=1``) and a few
 watsonx embedding calls.

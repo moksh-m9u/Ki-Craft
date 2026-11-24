@@ -61,10 +61,20 @@ GENERATION_PROVIDER: str = "gemini"
 GENERATION_MODEL: str = "gemini-3.5-flash-lite"
 
 # Storage locations
-CHROMA_PERSIST_DIR: str = "dbv2/chroma_db"
 IMAGES_DIR: str = "dbv2/images"
 # One chunk export per ingested document, <source>.json.
 JSON_EXPORT_DIR: str = "json"
+
+# Postgres (Neon). Both point at the same database. The API uses the pooled
+# string (host ends in -pooler), which shares a few server connections among
+# many clients. Migrations and bulk copies use the direct one, because they
+# hold one long session that a transaction pooler would split. Empty until set.
+DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+DATABASE_URL_DIRECT: str = os.getenv("DATABASE_URL_DIRECT", "")
+# The production branch's direct string, read only by scripts/copy_document.py,
+# which copies documents from DATABASE_URL_DIRECT (dev) into it. Nothing else
+# writes to production, so .env can keep pointing at dev.
+PRODUCTION_DATABASE_URL_DIRECT: str = os.getenv("PRODUCTION_DATABASE_URL_DIRECT", "")
 
 # Retrieval settings
 # How the vector store picks chunks for a question. These are the three
@@ -184,5 +194,3 @@ CORS_ALLOWED_ORIGINS: list[str] = [
     o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", _CORS_DEFAULT).split(",") if o.strip()
 ]
 
-# Vector store settings
-CHROMA_COLLECTION_METADATA: dict = {"hnsw:space": "cosine"}

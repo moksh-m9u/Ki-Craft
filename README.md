@@ -11,7 +11,7 @@ It starts where every design starts: the datasheet. Today it answers questions a
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)](https://www.langchain.com/)
-[![ChromaDB](https://img.shields.io/badge/ChromaDB-FF6F61?style=for-the-badge&logo=databricks&logoColor=white)](https://www.trychroma.com/)
+[![Postgres](https://img.shields.io/badge/Postgres_pgvector-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
 [![watsonx](https://img.shields.io/badge/watsonx_Granite-0F62FE?style=for-the-badge&logo=ibm&logoColor=white)](https://www.ibm.com/watsonx)
 [![Gemini](https://img.shields.io/badge/Gemini_3.5_Flash--Lite-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white)](https://ai.google.dev/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io/)
@@ -37,7 +37,7 @@ It starts where every design starts: the datasheet. Today it answers questions a
 | 2. Schematic review | Check a KiCad schematic against the datasheets of its parts: pins, feedback dividers, decoupling | `░░░░░░░░░░` planned |
 | 3. Design agent | Draft schematics in KiCad from requirements, and assist with placement and layout | `░░░░░░░░░░` planned |
 
-Phase 1 so far: a cleaned-up, explainable codebase, an API with streaming answers and labelled figure citations, and a pipeline that ingests any PDF. Next: Postgres, an evaluation set that measures accuracy, hybrid search, uploading your own PDFs through the API with page-level citations, and a hosted demo.
+Phase 1 so far: a cleaned-up, explainable codebase, an API with streaming answers and labelled figure citations, a pipeline that ingests any PDF, and Postgres with pgvector as the one database. Next: an evaluation set that measures accuracy (drafted), hybrid search, uploading your own PDFs through the API with page-level citations, and a hosted demo.
 
 ## What it does today
 
@@ -67,8 +67,8 @@ flowchart TB
         PART --> CHUNK --> ENRICH
     end
 
-    subgraph Storage["Storage (dbv2, json)"]
-        CHROMA[("Chroma<br/>summary vector + raw_text,<br/>tables_html, image_paths")]
+    subgraph Storage["Storage (Neon, dbv2/images, json)"]
+        STORE[("Postgres + pgvector<br/>summary vector + raw_text,<br/>tables_html, figure paths")]
         IMAGES[("dbv2/images<br/>figure JPEGs")]
         JSON[("json/*.json<br/>chunk exports")]
     end
@@ -77,7 +77,7 @@ flowchart TB
         direction TB
         Q["question"]
         EMBED_Q["src/embed.py<br/>embed the question"]
-        MMR["search.py<br/>MMR, keep 5 of 20"]
+        MMR["search.py<br/>pgvector cosine, MMR keeps 5 of 20"]
         REBUILD["src/documents.py<br/>rebuild text, tables, figures"]
         GEN["prompt.py, generate.py<br/>multimodal prompt, Gemini 3.5 Flash-Lite"]
         ANSWER["answer"]
@@ -92,12 +92,12 @@ flowchart TB
     PDF --> PART
     ENRICH --> JSON
     JSON --> BUILD
-    BUILD --> CHROMA
+    BUILD --> STORE
     BUILD --> IMAGES
-    CHROMA --> MMR
+    STORE --> MMR
     IMAGES --> REBUILD
     CHAT -- "HTTP" --> Q
-    EXPLORE -- "HTTP, /v1/documents" --> CHROMA
+    EXPLORE -- "HTTP, /v1/documents" --> STORE
 ```
 
 </details>

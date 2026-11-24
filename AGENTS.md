@@ -50,7 +50,7 @@ Data: QueryRequest -> list[Document] (metadata: raw_text, tables_html, image_pat
 Try: set a breakpoint in X, or run the command below, and look at Y.
 ```
 
-The owner wants depth here. At each hop, also explain from first principles what the library underneath does for us (FastAPI, LangChain, Chroma, unstructured, and so on): what it receives, what it returns, and what would break without it. Assume no prior knowledge of that library.
+The owner wants depth here. At each hop, also explain from first principles what the library underneath does for us (FastAPI, LangChain, SQLAlchemy, pgvector, unstructured, and so on): what it receives, what it returns, and what would break without it. Assume no prior knowledge of that library.
 
 ### Glossary
 
@@ -90,17 +90,21 @@ config/settings.py      every tunable and environment variable
 config/providers.py     catalogue of LLM providers and models the query llm object accepts
 src/embed.py            the one embedding factory (IBM watsonx Granite, 768 dims)
 src/llm.py              the one chat model factory: catalogue entry -> LangChain client; default_llm
-src/ingestion/          offline pipeline: PDF -> elements -> chunks -> summaries -> Chroma
+src/ingestion/          offline pipeline: PDF -> elements -> chunks -> summaries -> Postgres
   extract.py              unstructured partition_pdf (hi_res, tables, images); drops headers, footers, logos
   chunk.py                chunk_by_title
   enrich.py               vision LLM summary per chunk (HF router GLM-4.5V, or local mlx_vlm Qwen3.5-4B)
   export.py               chunks -> JSON export
-  pipeline.py             export -> records with figure files; runs the steps and writes Chroma
+  pipeline.py             export -> rows with figure files; runs the steps and writes Postgres
 src/retrieval/
-  search.py               load Chroma, build the MMR retriever, retrieve
+  search.py               pgvector search (similarity, MMR, threshold), PostgresRetriever
   prompt.py               build the multimodal prompt, label chunks (C1) and figures (IMG1)
   citations.py            read the finished answer's [C1] and [IMG1] citations and check them
   generate.py             retrieve, stream the answer from the model, count tokens, price, trace
+src/db/connection.py    Neon URL -> SQLAlchemy URL for psycopg 3
+src/db/store.py         one document's rows: is_stored, write_document (one transaction), read_document, copy_document
+src/db/schema.py        Postgres tables (documents, chunks with vector(768), images), SQLAlchemy Core
+migrations/             Alembic migrations that create those tables (alembic.ini at the root)
 src/documents.py        turns stored chunk metadata back into text, tables, images
 src/browse.py           lists stored documents and a document's chunks in order (no search)
 api/main.py             FastAPI app: CORS, lifespan, include_router calls
@@ -115,11 +119,11 @@ app/components/         pieces several pages draw: document picker, filters, mod
 app/chunk_data.py       cached API reads and helpers over chunk dicts
 app/state.py            session state defaults, kept widget values, the loaded document
 app/api_client.py       the only place the UI talks to the backend
-app/rag_eval_dashboard.py  Streamlit viewer for evaluation results
 app/requirements.txt    the packages Streamlit Community Cloud installs for the dashboard
-scripts/                CLI ingestion: PDFs or json/ exports into the store (scripts/ingest.py)
-dbv2/                   the built Chroma store and extracted figure images
-json/                   per-document chunk exports (summaries included) used to build dbv2
+scripts/                CLI ingestion: PDFs or json/ exports into Postgres (scripts/ingest.py);
+                        copy_document.py copies documents from dev to production unchanged
+dbv2/images/            the figure files whose paths the database stores
+json/                   per-document chunk exports (summaries included); Postgres can be rebuilt from them
 evals/                  evaluation questions and notes
 tests/                  pytest suite (no network)
 ```
@@ -128,10 +132,10 @@ Data flow at a glance:
 
 ```
 Ingestion (offline):  PDF -> partition_pdf -> chunk_by_title -> vision summary per chunk
-                      -> embed summary (watsonx) -> Chroma (summary as page_content,
-                      raw_text/tables_html/image_paths as metadata) + images on disk
-Query (online):       question -> embed -> Chroma MMR (k=5 of 20) -> rebuild text,
-                      tables, images from metadata -> multimodal prompt -> Gemini -> answer
+                      -> embed summary (watsonx) -> Postgres rows (summary, vector(768),
+                      raw_text, tables_html, figure paths) + figure files on disk
+Query (online):       question -> embed -> pgvector MMR (k=5 of 20) -> rows as Documents
+                      -> multimodal prompt -> Gemini -> answer
 ```
 
 ## Commands
@@ -165,13 +169,13 @@ python -m scripts.ingest data/ --backend local
 Notes:
 
 - Tests must not call the network. Mock external clients (see `tests/test_embed.py`).
-- Opening the Chroma store rewrites tracked files under `dbv2/chroma_db`. After any run that opens it, restore with `git checkout -- dbv2/chroma_db` unless the change is a deliberate re-index.
+- `.env` points `DATABASE_URL` and `DATABASE_URL_DIRECT` at the Neon `dev` branch. Live checks and ingestion runs use `dev`; `production` is what the deployed API reads, and new documents reach it only through `python -m scripts.copy_document <source>` (no re-embedding, same record ids).
 - Live checks load credentials from `.env` with `python-dotenv`. Never print, log, or read secret values. Refer to them only by variable name.
 - Streamlit copies root-level keys from `.streamlit/secrets.toml` into `os.environ` and overwrites existing values. Keep that file out of git (it is ignored).
 
 ## Environment variables
 
-`GEMINI_API_KEY`, `HF_TOKEN`, `WATSONX_API_KEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL`, `API_BASE_URL`, `CORS_ALLOWED_ORIGINS`, `GENERATION_MAX_TOKENS`, and the LangSmith variables (`LANGSMITH_API_KEY`, `LANGSMITH_TRACING`, `LANGSMITH_PROJECT`). See `config/settings.py` for defaults. `LANGSMITH_TRACING` is the one tracing switch: when it is unset the legacy `LANGCHAIN_TRACING_V2` is used, and `config/settings.py` writes the result to `LANGSMITH_TRACING_V2`, which the langsmith library checks first.
+`GEMINI_API_KEY`, `HF_TOKEN`, `WATSONX_API_KEY`, `WATSONX_PROJECT_ID`, `WATSONX_URL`, `DATABASE_URL` (Neon, pooled), `DATABASE_URL_DIRECT` (Neon, direct; migrations and bulk copies), `PRODUCTION_DATABASE_URL_DIRECT` (read only by `scripts/copy_document.py`), `API_BASE_URL`, `CORS_ALLOWED_ORIGINS`, `GENERATION_MAX_TOKENS`, and the LangSmith variables (`LANGSMITH_API_KEY`, `LANGSMITH_TRACING`, `LANGSMITH_PROJECT`). See `config/settings.py` for defaults. `LANGSMITH_TRACING` is the one tracing switch: when it is unset the legacy `LANGCHAIN_TRACING_V2` is used, and `config/settings.py` writes the result to `LANGSMITH_TRACING_V2`, which the langsmith library checks first.
 
 Ingestion summaries: `ENHANCEMENT_BACKEND` (`huggingface` or `local`) and the `ENHANCEMENT_*` and `LOCAL_ENHANCEMENT_*` tunables; see the ingestion section of `CONTRIBUTING.md`.
 
@@ -189,6 +193,7 @@ Recorded so no agent re-opens them. Dates are when the owner decided.
   - add `POST /query/stream` for streaming; it replaces `GET /query/stream`, takes the same body as `POST /query` (including `max_images` and `llm`), and the two routes are the whole query API;
   - return real HTTP errors, with 502 when the LLM provider fails.
 - 2026-11-15: **Two query routes, not one with a stream flag.** After Checkpoint 2 the query API is `POST /v1/query` (JSON) and `POST /v1/query/stream` (SSE), with one shared body; model choice is the `llm` object in that body, never a path (`/query/custom` goes). OpenAI and Anthropic use one route with `stream: true`, but Google Gemini (`generateContent` and `streamGenerateContent`), AWS Bedrock (`Converse` and `ConverseStream`), and LangServe (`/invoke` and `/stream`) use separate routes, so both patterns are mainstream. Two routes keep one response type per route, fully described in `/docs`, and a short handler each. POST, not GET, because the body can carry an API key, which must never be in a URL (URLs land in access and proxy logs), and because answers cost tokens and vary, so they must not be cached or retried like a GET. If OpenAI compatibility is ever wanted, add a separate `/v1/chat/completions` adapter.
+- 2026-11-22: **Neon hosts Postgres; the API runs on Render.** The backend is already deployed on Render, so Railway's one advantage (private networking next to the API) no longer applies, and Railway's free offer is a one-month trial. Neon has a lasting free plan, pgvector, scale to zero and database branches, which suit the migration check (load a branch, compare it with Chroma, discard it if wrong). Costs accepted: a cold start of about a second after five idle minutes, and the API reaches the database over the public internet (TLS), so the Neon region should match the Render region. Use Neon's pooled connection string; with psycopg 3 that means turning prepared statements off. Tests stay offline. Render's own Postgres was not chosen: its free database expires after a short period.
 - 2026-11-13: **`/v1` prefix** on every API endpoint except `/` and `/health`, which stay unversioned for uptime probes. The planned endpoint list is in `docs/TRADEOFFS.md`, section 8.
 - 2026-11-13: **Component choices.** `docs/TRADEOFFS.md` marks every option in its tables as (chosen), (future option), (to research), or (not pursued). Alternatives are never deleted. In short:
   - extraction: local unstructured hi_res in development, Unstructured's hosted Parse API in production, switched by one environment variable; free Render or Railway tiers cannot run hi_res;
@@ -198,7 +203,7 @@ Recorded so no agent re-opens them. Dates are when the owner decided.
   - retrieval: hybrid search once on Postgres; metadata filtering by document and document type still to design;
   - generation: Gemini Flash-Lite stays the default;
   - frontend: React with TypeScript in a later phase; Next.js or Vite decided then;
-  - database host: Railway Postgres, tentatively; hosting overall still to discuss.
+  - database host: Railway Postgres, tentatively; replaced on 2026-11-22 by Neon, with the API on Render (see above).
 - 2026-11-13: **First upload target is datasheets.** Privacy (local mode) is a later add-on. The demo user is a mix of student and working engineer.
 - 2026-11-21: **Postgres before the evaluation baseline.** Checkpoint 6 runs before Checkpoint 5; the numbers stay as they are because docs and commits refer to them. The migration copies the same embeddings under the same record ids, so it needs a check that pgvector returns what Chroma returns, not a measure of quality: about 50 real questions, comparing the record ids of the 20 nearest chunks and of the final 5 after MMR. The golden set refers to record ids, which the migration keeps, so it is built on Postgres afterwards and still comes before any change meant to alter results (hybrid search, re-ranking, chunking, a new summarizer or embedding model, the cache).
 - 2026-11-13: **Working style.** Keep the checkpoint order (changed once, on 2026-11-21: Checkpoint 6 before 5). There is no fixed deadline; understanding comes before speed. For the evaluation set, the agent drafts questions with expected answers and pages, and the owner reviews every one.
@@ -270,15 +275,28 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 - Cleanup, 2026-11-20, after a scan of the whole repository found no function without a caller but several duplicates. Ingestion has one write path: a PDF becomes an export and is stored by `src/ingestion/pipeline.py:store_export`, like an existing export, so it gets the same checks and refuses a document already stored; `create_vector_store` is deleted, and the store is opened only by `src/retrieval/search.py:load_vector_store`. The dashboard draws a chunk's content with one function, `app/components/chunk_view.py:render_content_tabs`, on the Explorer, Compare and Query pages, and the Explorer and Analytics pages share one per-chunk table (`build_chunk_df`) and one totals row (`components/dataset.py:render_totals`). `tests/test_api.py` is split into `tests/api/`, one file per router, with the fakes in `fakes.py` and the fixtures in `conftest.py`. `src/logger.py` lost its unused options (81 lines to 42), and `scripts/ingest.py` its `sys.path` line, since it runs as `python -m scripts.ingest`.
 - Send the sidebar's Max Images in default mode too. Found 2026-11-15: without a custom provider the dashboard calls `/query/stream` with `top_k` only (`app/dashboard.py`, `api_stream(...)`), so the Max Images input is ignored and the server default `GENERATION_MAX_IMAGES` (3) applies. Only custom-provider mode sends it. Done 2026-11-16 in the POST stream migration: default mode passes `max_images` (`app/dashboard.py`, `api_stream(...)`); on 2026-11-19 the request body was captured and carries the sidebar value, 0 included.
 
-**Checkpoint 6. Postgres + pgvector.** Runs before Checkpoint 5 (decided 2026-11-21). Host: Railway Postgres, tentatively; confirm before starting.
+**Checkpoint 6. Postgres + pgvector.** Status: done (2026-11-24); tested by the owner. Runs before Checkpoint 5 (decided 2026-11-21). Host: Neon (decided 2026-11-22), in the same region as the Render API.
 - Schema for documents, chunks (with `vector(768)`), images, queries, retrievals, answers, and feedback, with Alembic migrations.
+  Started 2026-11-22: `src/db/schema.py` and the first migration (`migrations/versions/0001_documents_chunks_images.py`) create `documents`, `chunks` and `images` and enable pgvector; `alembic upgrade head`, `alembic check` (no drift), `downgrade base` and `upgrade` again ran on the Neon `dev` branch. The other tables come with the code that writes them. The Chroma collection uses cosine distance, so pgvector searches with `<=>`. Packages added: `sqlalchemy` (Core only, no ORM), `psycopg[binary]`, `alembic`, `pgvector`.
 - A one-off script copies ids, summaries, embeddings, and metadata out of Chroma into Postgres. No summarizer and no re-embedding.
+  Done 2026-11-23: `scripts/chroma_to_postgres.py` copied 6 documents, 310 chunks and 276 figures into the Neon `dev` branch in one transaction, then read every row back and found it identical to Chroma (ids, text, tables, figure paths, embeddings bit for bit). It refuses to run on a non-empty `chunks` table; `--check-only` repeats the comparison. `src/db/connection.py:sqlalchemy_url` (shared with `migrations/env.py`) points Neon's `postgresql://` URLs at psycopg 3.
 - Each Chroma record id becomes the chunk's primary key, stored as the Postgres `uuid` type, unchanged. Figure URLs (`/v1/images/{record_id}/{position}`) contain this id, so generating new ids would break every figure link a client holds.
 - Swap the retriever to pgvector and check it returns what Chroma returns: for about 50 real questions, the same record ids among the 20 nearest chunks and the same final 5 after MMR.
-- Remove Chroma once they match.
+  Switched 2026-11-23: the API reads only Postgres. `RAGService` holds the embedding client and one engine (`src/db/connection.py:create_db_engine` on `DATABASE_URL`, pooled), checked with `SELECT 1` at startup (503 when it fails, detail `Database unavailable: ...`); each request gets a `PostgresRetriever`; `src/browse.py` lists documents, pages a document's chunks and looks up one figure's path with plain SQL, as planned in Checkpoint 4; the figure endpoint still serves only files inside `IMAGES_DIR` (`src/documents.py:figure_file`). Checked live against Neon `dev`: `/health`, the per-document chunk, figure and table counts (identical to Chroma's), a chunk page, a figure (200, image/jpeg), 404 for an unknown document and position, and `/v1/retrieve`. The `/health` body said `vector_store` until 2026-11-24; it is now `{status, database: "connected"}` (owner's choice). The API tests fake the engine-backed reads (`tests/api/fakes.py:FakeStore`). The API image installs `sqlalchemy`, `psycopg[binary]` and `pgvector`.
+  Checked 2026-11-23 with `scripts/compare_search.py` on the 76 golden-set questions (one watsonx embedding per question, sent to both stores): the final 5 after MMR match on all 76, in the same order; the nearest 20 match on 75, and on the other one two chunks tie at exactly the same distance at ranks 20 and 21 and the stores break the tie differently. Postgres now breaks ties by record id. Found on the way: LangChain's Chroma returns MMR's picks in nearest-first order, not in the order MMR picks them, and that order sets the `C1`..`C5` labels and which figures fit the image cap, so `search_postgres` sorts its picks the same way. That run took watsonx to 90 percent of its monthly embedding quota (271,140 of 300,000 tokens).
+- Ingestion writes Postgres. Done 2026-11-23: `src/ingestion/pipeline.py:store_export` checks the export, refuses a stored document unless `replace`, embeds every summary, writes figure files (`rows_from_export`), then `write_document` deletes the old document (cascade) and inserts the new rows in one transaction; stale figure files go last. `scripts/ingest.py` lost `--store`; it writes to `DATABASE_URL_DIRECT`. A new database is filled with `alembic upgrade head` and `python -m scripts.ingest json/*.json` (re-embeds about 100,000 tokens, new record ids); `CONTRIBUTING.md` has a Database section for contributors (Neon, the `pgvector/pgvector` Docker image, or any Postgres with pgvector). Checked live on Neon `dev` with a two-chunk test document: stored, refused without `--replace`, replaced with new record ids, then deleted.
+- Remove Chroma once they match. Done 2026-11-24:
+  1. The Neon `production` branch was filled by copying, not re-ingesting (`alembic upgrade head`, then the copy script with `DATABASE_URL_DIRECT` pointed at `production` for those two commands): 6 documents, 310 chunks, 276 figures, same record ids, so figure URLs stay the same; the read-back check found it identical to Chroma.
+  2. Deleted: `scripts/chroma_to_postgres.py`, `scripts/compare_search.py` and their test, `load_vector_store`, `dbv2/chroma_db`, the `CHROMA_*` settings, `langchain-chroma` (and with it about 600 lines of `uv.lock`), and the `git checkout -- dbv2/chroma_db` notes. Git history keeps the scripts.
+  3. Left for deployment: on Render, set `DATABASE_URL` to the `production` pooled string before the new image goes live (Checkpoint 9 lists it too).
+  The last Chroma leftover, `src/documents.py:_parse_json_value` (it accepted the JSON strings Chroma stored), was deleted the same day; Postgres returns lists.
+  Added 2026-11-24: `scripts/copy_document.py` copies documents from `dev` to `production` row for row (`src/db/store.py:copy_document`, one transaction per document, refuses an existing one without `--replace`), so new datasheets are embedded once. `is_stored` and `write_document` moved from `src/ingestion/pipeline.py` to `src/db/store.py`, which both use. Checked live with a throwaway two-chunk document: copied identical (ids, text, tables, figures, vectors), skipped on a second run, replaced with `--replace`, an unknown name failed, then deleted from both branches. A connection that drops during a request is now a 503, not a 500 (`api/main.py:database_lost`).
+  Cleanup the same day, chosen by the owner after a scan found no function without a caller: deleted `notebooks/` (the Chroma-era notebook), `parsed_pdf/` (42 MB of annotated PDFs it drew), `app/rag_eval_dashboard.py` with `evals/testing.json`, and the unused `assets/dashboard-compare.png`.
+  The work is on the branch `feat/postgres-pgvector`.
 
 **Checkpoint 5. Evaluation baseline.** Runs after Checkpoint 6, on Postgres.
-- Turn `evals/testing.json` into a small golden set covering text, table, figure, and "not stated" questions per document. The agent drafts each question with its expected answer and page; the owner reviews every one.
+- Turn the old `evals/testing.json` (deleted 2026-11-24 with `app/rag_eval_dashboard.py`, its viewer) into a small golden set covering text, table, figure, and "not stated" questions per document. The agent drafts each question with its expected answer and page; the owner reviews every one.
+  Drafted 2026-11-21 as `evals/golden_set.json` (76 questions, on `main`). The review page `evals/review.py` and its doc lines are parked on the local branch `feat/golden-set-review` (2026-11-22); merge or rebase it when Checkpoint 5 resumes.
 - One script reports retrieval hit rate and answer correctness.
 - Record the baseline in `docs/TRADEOFFS.md` so later changes (chunking, embeddings, hybrid search, cache) are measured, not guessed.
 
@@ -296,7 +314,7 @@ Each checkpoint is a set of small commits. Finish one, let the owner test and pu
 - Optional: a small router model that decides between a cache hit, retrieval, or a direct answer.
 
 **Checkpoint 9. Deployment.**
-- Bring Railway back with the watsonx and database variables.
+- Set the watsonx and database (Neon) variables on the Render service.
 - Set `API_BASE_URL` in Streamlit Cloud secrets.
 - Document the deploy in `CONTRIBUTING.md`.
 

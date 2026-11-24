@@ -19,7 +19,7 @@ MERMAID_NODE_NOTES: dict[str, str] = {
     "SUMMARY": "A vision model reads each section's text, tables and figures and writes a "
     "plain-text summary: GLM-4.5V hosted, or Qwen3.5-4B on a Mac.",
     "EMBED": "IBM watsonx Granite turns each summary into a 768-number vector.",
-    "STORE": "Chroma keeps the summary vector, and alongside it the original text, tables "
+    "STORE": "Postgres with pgvector keeps the summary vector, and alongside it the original text, tables "
     "and figure paths. Figures are JPEG files served by the API.",
     "QUESTION": "Your question, from the Query page or any client of the API.",
     "QEMBED": "The question is embedded with the same Granite model.",
@@ -48,7 +48,7 @@ flowchart TB
         PDF --> EXTRACT --> CHUNK --> SUMMARY --> EMBED
     end
 
-    STORE[("Chroma: vectors, original text,<br/>tables, figure files")]
+    STORE[("Postgres + pgvector: vectors,<br/>original text, tables, figure paths")]
 
     subgraph Q["For every question"]
         direction LR

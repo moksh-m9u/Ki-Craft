@@ -3,14 +3,15 @@
 The real FastAPI app and its lifespan run, but the heavy things are replaced
 before the app starts (see ``conftest.py:backend``):
 
-* the watsonx embedding client and the Chroma store (patched in
-  ``api.service``, where ``RAGService._load`` looks them up);
+* the watsonx embedding client, the Postgres engine and the reads that use
+  it (patched in ``api.service``, where ``RAGService`` looks them up): the
+  retriever, ``list_documents``, ``document_chunks`` and ``figure_path``
+  answer from the in-memory records below;
 * the two chat client classes inside ``src/llm.py``. The real ``create_llm``
   still runs, so its catalogue checks are part of every test.
 
-Guards make any attempt to open the real Chroma store or build a real watsonx
-client fail the test, and LangSmith tracing is switched off, so no test
-touches ``dbv2/`` or the network.
+Guards make any attempt to create a real database engine or build a real watsonx client fail the test, and LangSmith tracing is switched
+off, so no test touches Neon, ``dbv2/`` or the network.
 """
 
 from __future__ import annotations
@@ -19,6 +20,9 @@ import json
 
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessageChunk
+
+from src.browse import DocumentSummary
+from src.documents import chunk_text_and_tables, stored_image_paths
 
 # Starts with the JPEG magic bytes so it looks like a real figure.
 JPEG_BYTES = b"\xff\xd8\xff\xe0fake-jpeg-for-tests"
@@ -40,8 +44,8 @@ def _fake_chunks() -> list[Document]:
             "source": "lm317",
             "chunk_id": 2,
             "raw_text": "Pin 1 ADJ, pin 2 VOUT, pin 3 VIN.",
-            "tables_html": json.dumps(["<table><tr><td>ADJ</td></tr></table>"]),
-            "image_paths": "[]",
+            "tables_html": ["<table><tr><td>ADJ</td></tr></table>"],
+            "image_paths": [],
         },
     )
     tlv1117 = Document(
@@ -51,8 +55,8 @@ def _fake_chunks() -> list[Document]:
             "source": "tlv1117",
             "chunk_id": 1,
             "raw_text": "Dropout 1.1 V at 800 mA.",
-            "tables_html": "[]",
-            "image_paths": json.dumps(["dbv2/images/tlv1117_c1_img0.jpg"]),
+            "tables_html": [],
+            "image_paths": ["dbv2/images/tlv1117_c1_img0.jpg"],
         },
     )
     return [lm317, tlv1117]
@@ -63,7 +67,7 @@ def _stored_chunks() -> list[Document]:
     lm317_first = Document(
         id=LM317_FIRST_ID,
         page_content="LM317 overview: 1.2 V to 37 V adjustable regulator.",
-        metadata={"source": "lm317", "chunk_id": 1, "raw_text": "", "tables_html": "[]", "image_paths": "[]"},
+        metadata={"source": "lm317", "chunk_id": 1, "raw_text": "", "tables_html": [], "image_paths": []},
     )
     return _fake_chunks() + [lm317_first]
 
@@ -79,27 +83,46 @@ class _FakeRetriever:
         return _fake_chunks()[: self.k]
 
 
-class _FakeStore:
-    """Stands in for the Chroma store: ``as_retriever`` and ``get`` are used."""
+class FakeStore:
+    """Stands in for the Postgres reads in ``src/browse.py`` over the records above."""
 
-    def as_retriever(self, search_type: str = "mmr", search_kwargs: dict | None = None):
-        """Mimic ``Chroma.as_retriever``."""
-        return _FakeRetriever((search_kwargs or {}).get("k", 10))
-
-    def get(self, ids: list[str] | None = None, where: dict | None = None, include: list[str] = ()) -> dict:
-        """Mimic ``Chroma.get``: records by id, or by an exact ``source`` match, or all.
-
-        Like Chroma, records come back in storage order, not sorted.
-        """
+    @staticmethod
+    def _records() -> dict:
+        """Every stored record by id, plus one whose figure path climbs out of the images folder."""
         records = {doc.id: doc for doc in _stored_chunks()}
-        records[ESCAPING_ID] = Document(page_content="", metadata={"image_paths": json.dumps(["dbv2/images/../../secret.txt"])})
-        found = [i for i in ids if i in records] if ids is not None else list(records)
-        if where:
-            found = [i for i in found if records[i].metadata.get("source") == where["source"]]
-        result = {"ids": found, "metadatas": [records[i].metadata for i in found]}
-        if "documents" in include:
-            result["documents"] = [records[i].page_content for i in found]
-        return result
+        records[ESCAPING_ID] = Document(
+            id=ESCAPING_ID,
+            page_content="",
+            metadata={"source": "escape", "chunk_id": 1, "image_paths": ["dbv2/images/../../secret.txt"]},
+        )
+        return records
+
+    def list_documents(self, engine) -> list[DocumentSummary]:
+        """Mimic ``list_documents``: counts per source, sorted by name."""
+        counts: dict[str, list[int]] = {}
+        for doc in _stored_chunks():
+            source = doc.metadata["source"]
+            n, images, tables = counts.get(source, [0, 0, 0])
+            counts[source] = [
+                n + 1,
+                images + len(stored_image_paths(doc.metadata)),
+                tables + len(chunk_text_and_tables(doc)["tables_html"]),
+            ]
+        return [DocumentSummary(source, *counts[source]) for source in sorted(counts)]
+
+    def document_chunks(self, engine, document_id: str, offset: int, limit: int) -> tuple[list[Document], int]:
+        """Mimic ``document_chunks``: one document's chunks by ``chunk_id``, paged."""
+        found = sorted(
+            (doc for doc in _stored_chunks() if doc.metadata["source"] == document_id),
+            key=lambda doc: doc.metadata["chunk_id"],
+        )
+        return found[offset : offset + limit], len(found)
+
+    def figure_path(self, engine, record_id: str, position: int) -> str | None:
+        """Mimic ``figure_path``: the stored path, or None."""
+        record = self._records().get(record_id)
+        paths = stored_image_paths(record.metadata) if record else []
+        return paths[position] if 0 <= position < len(paths) else None
 
 
 class FakeBackend:
@@ -119,11 +142,15 @@ class FakeBackend:
         self.prompts: list = []
         self.client_kwargs: list[dict] = []
 
-    def load_store(self, embedding_model) -> _FakeStore:
-        """Replacement for ``load_vector_store``."""
+    def ping(self, engine) -> None:
+        """Replacement for ``src/db/connection.py:ping``; fails when ``store_error`` is set."""
         if self.store_error:
             raise RuntimeError(self.store_error)
-        return _FakeStore()
+
+    @staticmethod
+    def retriever(engine, embedding_model, k: int) -> _FakeRetriever:
+        """Replacement for ``PostgresRetriever``."""
+        return _FakeRetriever(k)
 
     def make_llm(self, *args, **kwargs) -> "_FakeLLM":
         """Replacement for both chat client classes; records what it was given."""
