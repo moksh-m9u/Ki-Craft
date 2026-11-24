@@ -419,7 +419,9 @@ src/
   llm.py                 the one chat model factory: catalogue entry -> LangChain client
   db/schema.py           Postgres tables: documents, chunks (vector(768)), images
   db/connection.py       Neon URL -> SQLAlchemy URL for psycopg 3
-  documents.py           turns stored chunk metadata back into text, tables, figures
+  chunk.py               Chunk: the typed chunk every query step passes
+  figures.py             a stored figure path -> its file, only inside the images folder
+  db/chunks.py           the shared SELECT for stored chunks, row -> Chunk
   browse.py              lists the stored documents and a document's chunks in order
   tables.py              stored HTML tables -> Markdown for prompts
   logger.py              logging setup
@@ -432,11 +434,13 @@ src/
   retrieval/
     search.py              pgvector search (similarity, MMR, threshold) and the retriever
     prompt.py              builds the multimodal prompt, chooses and labels the figures
-    generate.py            retrieves, streams the answer, counts tokens, prices, traces
+    generate.py            retrieves, streams the answer, traces
+    usage.py               adds up streamed token counts and prices them
 api/
   main.py                FastAPI app: CORS, lifespan, routers
   routers/               endpoints by purpose: system, retrieval, query, providers, documents, images
   service.py             owns the database engine and embedding client, picks the default LLM
+  responses.py           turns chunks and figures into response bodies
   schemas.py             request and response models
   openapi_examples.py    docs text and example payloads shown at /docs
   requirements.txt       the backend's packages (used by the Dockerfile)

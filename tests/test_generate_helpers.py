@@ -11,14 +11,8 @@ import pytest
 pytest.importorskip("langsmith")
 pytest.importorskip("langchain_core")
 
-from langchain_core.documents import Document
-
-from src.retrieval.generate import (
-    _capture_usage,
-    _estimate_cost,
-    _extract_text,
-    _trace_inputs,
-)
+from src.chunk import Chunk
+from src.retrieval.generate import _extract_text, _trace_inputs
 from src.retrieval.prompt import (
     PromptFigure,
     _build_message_content,
@@ -27,51 +21,6 @@ from src.retrieval.prompt import (
     prompt_stats,
     select_figures,
 )
-
-
-class _FakeMsg:
-    def __init__(self, usage_metadata=None):
-        self.usage_metadata = usage_metadata
-        self.content = ""
-
-
-def test_capture_usage_adds_each_chunk():
-    """Gemini chunks carry the tokens each chunk added; the totals are their sum."""
-    usage = {}
-    _capture_usage(_FakeMsg({"input_tokens": 10, "output_tokens": 2, "total_tokens": 12}), usage)
-    _capture_usage(_FakeMsg({"input_tokens": 0, "output_tokens": 3, "total_tokens": 3}), usage)
-    assert usage == {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}
-
-
-def test_capture_usage_single_final_chunk():
-    """OpenAI-style streams send the whole count once, on the last chunk."""
-    usage = {}
-    _capture_usage(_FakeMsg(), usage)
-    _capture_usage(_FakeMsg({"input_tokens": 7, "output_tokens": 4, "total_tokens": 11}), usage)
-    assert usage == {"input_tokens": 7, "output_tokens": 4, "total_tokens": 11}
-
-
-def test_capture_usage_ignores_non_int():
-    usage = {}
-    _capture_usage(_FakeMsg({"input_tokens": "nope", "output_tokens": 1, "total_tokens": 10}), usage)
-    assert usage == {"output_tokens": 1, "total_tokens": 10}
-
-
-def test_capture_usage_no_metadata():
-    usage = {}
-    _capture_usage(_FakeMsg(), usage)
-    assert usage == {}
-
-
-def test_estimate_cost_uses_the_models_own_prices():
-    """GPT-4o is priced as GPT-4o (2.50 in, 10.00 out per 1M), not as the default model."""
-    usage = {"input_tokens": 1_000_000, "output_tokens": 100_000}
-    assert _estimate_cost("openai", "gpt-4o", usage) == 3.5
-    assert _estimate_cost("gemini", "gemini-2.5-flash-lite", usage) == 0.14
-
-
-def test_estimate_cost_unknown_model_is_none():
-    assert _estimate_cost("openai", "not-a-model", {"input_tokens": 10}) is None
 
 
 def test_extract_text_string():
@@ -123,10 +72,10 @@ def test_generation_trace_records_figure_labels_not_bytes():
 @pytest.fixture(autouse=True)
 def _figures_root(monkeypatch, tmp_path):
     """Figure paths resolve under ``tmp_path``, so no test reads ``dbv2/images``."""
-    import src.documents
+    import src.figures
 
     (tmp_path / "dbv2" / "images").mkdir(parents=True)
-    monkeypatch.setattr(src.documents, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(src.figures, "_PROJECT_ROOT", tmp_path)
     return tmp_path
 
 
@@ -137,20 +86,23 @@ def _chunk(
     record_id: str | None = None,
     raw_text: str = "",
     tables: list[str] | None = None,
-) -> Document:
+) -> Chunk:
     """A stored chunk whose figure files hold the given strings as bytes."""
-    import src.documents
+    import src.figures
 
     paths = []
     for name in images:
         path = f"dbv2/images/{name}.jpg"
-        (src.documents._PROJECT_ROOT / path).write_bytes(name.encode())
+        (src.figures._PROJECT_ROOT / path).write_bytes(name.encode())
         paths.append(path)
-    return Document(
-        id=record_id,
-        page_content=summary,
-        metadata={"raw_text": raw_text, "tables_html": tables or [], "image_paths": paths}
-        | ({"source": source} if source else {}),
+    return Chunk(
+        record_id=record_id,
+        source=source or "",
+        chunk_id=1,
+        summary=summary,
+        raw_text=raw_text,
+        tables_html=tables or [],
+        image_paths=paths,
     )
 
 
@@ -322,5 +274,5 @@ def test_choosing_figures_reads_no_file(monkeypatch):
 def test_figure_outside_the_images_folder_is_not_sent(_figures_root):
     """A stored path is used only if it lies inside IMAGES_DIR, as for the image endpoint."""
     (_figures_root / "secret.txt").write_bytes(b"secret")
-    chunk = Document(page_content="a", metadata={"image_paths": ["secret.txt"]})
+    chunk = Chunk(record_id=None, source="", chunk_id=1, summary="a", image_paths=["secret.txt"])
     assert select_figures([chunk], 0) == []

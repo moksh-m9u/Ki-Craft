@@ -21,6 +21,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
 
 from api.openapi_examples import QUERY_BODY_EXAMPLES, error_responses
+from api.responses import citations_payload, figure_payloads, retrieve_response
 from api.schemas import LLMSettings, QueryRequest, QueryResponse
 from api.service import RAGService
 from src.llm import LLMProviderError, UnknownModelError, create_llm
@@ -77,7 +78,7 @@ async def query(
             not in the catalogue.
     """
     service = request.app.state.service
-    answer, base, figures, usage = await service.answer(
+    answer, chunks, figures, usage = await service.answer(
         req.query,
         req.top_k,
         req.max_images,
@@ -85,12 +86,14 @@ async def query(
         provider_id=req.llm.provider if req.llm else None,
         model_id=req.llm.model if req.llm else None,
     )
+    base = retrieve_response(req.query, chunks)
+    sent = figure_payloads(figures)
     return QueryResponse(
         **base.model_dump(),
         answer=answer,
         answer_characters=len(answer),
-        figures=figures,
-        citations=service.to_citations(answer, base.num_chunks, figures),
+        figures=sent,
+        citations=citations_payload(answer, base.num_chunks, sent),
         usage=usage,
     )
 
@@ -125,8 +128,8 @@ def _stream_frames(
     with closing(events):
         _, chunks = next(events)
         _, figures = next(events)
-        retrieval = service.to_retrieve_response(req.query, chunks)
-        figure_payloads = service.to_figure_payloads(figures)
+        retrieval = retrieve_response(req.query, chunks)
+        sent = figure_payloads(figures)
         yield _sse("retrieval", retrieval.model_dump())
         tokens: list[str] = []
         try:
@@ -142,10 +145,8 @@ def _stream_frames(
                             "answer": answer,
                             "answer_characters": len(answer),
                             "num_chunks": retrieval.num_chunks,
-                            "figures": [figure.model_dump() for figure in figure_payloads],
-                            "citations": service.to_citations(
-                                answer, retrieval.num_chunks, figure_payloads
-                            ).model_dump(),
+                            "figures": [figure.model_dump() for figure in sent],
+                            "citations": citations_payload(answer, retrieval.num_chunks, sent).model_dump(),
                             "usage": value,
                         },
                     )

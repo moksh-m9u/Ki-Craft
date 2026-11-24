@@ -15,7 +15,6 @@ import logging
 import pytest
 from concurrent.futures import ThreadPoolExecutor
 
-from langchain_core.documents import Document
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 import httpx
 from langchain_core.messages import AIMessage
@@ -23,6 +22,7 @@ from langchain_openai import ChatOpenAI
 from langsmith.run_helpers import tracing_context
 
 import src.llm
+from src.chunk import Chunk
 from src.llm import LLMProviderError, create_llm
 
 from src.retrieval import generate
@@ -53,15 +53,9 @@ class _RecordingClient:
 class _FakeRetriever:
     """Returns three plain chunks for any question."""
 
-    def invoke(self, query: str, **kwargs) -> list[Document]:
-        """Mimic a LangChain retriever's ``invoke``."""
-        return [
-            Document(
-                page_content=f"summary {i}",
-                metadata={"raw_text": "", "tables_html": [], "image_paths": []},
-            )
-            for i in range(3)
-        ]
+    def invoke(self, query: str, **kwargs) -> list[Chunk]:
+        """Mimic ``PostgresRetriever.invoke``."""
+        return [Chunk(record_id=f"id-{i}", source="lm555", chunk_id=i, summary=f"summary {i}") for i in range(3)]
 
 
 def _run_query() -> tuple[list, dict[str, dict]]:
@@ -108,6 +102,20 @@ def test_runs_record_the_answer_not_a_stream_object():
     assert named["AnswerQuery"]["outputs"]["usage"]["chunks_used"] == 3
     assert named["GenerateAnswerStream"]["outputs"] == {"answer": ANSWER}
     assert named["GenerateAnswerStream"]["run_type"] == "chain"
+
+
+def test_retrieval_run_records_chunks_as_documents():
+    """LangSmith shows a retriever run's output as documents when they have this layout."""
+    _, runs = _run_query()
+    documents = _by_name(runs)["RetrieveChunks"]["outputs"]["documents"]
+    assert [document["page_content"] for document in documents] == ["summary 0", "summary 1", "summary 2"]
+    assert documents[0]["metadata"] == {
+        "record_id": "id-0",
+        "source": "lm555",
+        "chunk_id": 0,
+        "tables": 0,
+        "figures": 0,
+    }
 
 
 def test_root_run_lasts_until_the_last_token():

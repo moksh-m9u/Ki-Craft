@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 import api.service
 import src.db.connection
-import src.documents
+import src.figures
 import src.embed
 import src.llm
 import src.retrieval.search
@@ -27,7 +27,7 @@ def backend(monkeypatch, tmp_path) -> FakeBackend:
     (tmp_path / "dbv2" / "images").mkdir(parents=True)
     (tmp_path / "dbv2" / "images" / "tlv1117_c1_img0.jpg").write_bytes(JPEG_BYTES)
     (tmp_path / "secret.txt").write_text("outside the images folder")
-    monkeypatch.setattr(src.documents, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(src.figures, "_PROJECT_ROOT", tmp_path)
     monkeypatch.setattr(api.service, "load_embedding_model", lambda: "fake-embeddings")
     store = FakeStore()
     monkeypatch.setattr(api.service, "create_db_engine", lambda url: "fake-engine")

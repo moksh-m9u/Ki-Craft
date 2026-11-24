@@ -9,7 +9,8 @@ import numpy as np
 import pytest
 
 import src.retrieval.search as search
-from src.documents import document_from_row
+from src.chunk import Chunk
+from src.db.chunks import chunk_from_row
 
 
 def _row(n: int, embedding: list[float], distance: float, images: list[str] | None = None, tables=None):
@@ -48,7 +49,7 @@ def pool(monkeypatch):
 
 def test_similarity_returns_the_k_nearest(pool):
     found = search.search_postgres(None, [1.0, 0.0, 0.0], "similarity", 2)
-    assert [d.metadata["chunk_id"] for d in found] == [1, 2]
+    assert [d.chunk_id for d in found] == [1, 2]
     assert pool.calls == [2]
 
 
@@ -58,7 +59,7 @@ def test_mmr_skips_the_near_duplicate_and_keeps_nearest_first_order(pool, monkey
     found = search.search_postgres(None, [1.0, 0.0, 0.0], "mmr", 2)
     assert pool.calls == [4]
     # MMR picks chunk 1, then a chunk unlike it; chunk 2 is nearly a copy of 1.
-    ids = [d.metadata["chunk_id"] for d in found]
+    ids = [d.chunk_id for d in found]
     assert 1 in ids and 2 not in ids
     assert ids == sorted(ids)
 
@@ -72,7 +73,7 @@ def test_mmr_pool_is_never_smaller_than_k(pool, monkeypatch):
 def test_score_threshold_drops_chunks_below_it(pool, monkeypatch):
     monkeypatch.setattr(search, "RETRIEVAL_SCORE_THRESHOLD", 0.55)
     found = search.search_postgres(None, [1.0, 0.0, 0.0], "similarity_score_threshold", 4)
-    assert [d.metadata["chunk_id"] for d in found] == [1, 2, 3]
+    assert [d.chunk_id for d in found] == [1, 2, 3]
 
 
 def test_unknown_search_type_is_rejected(pool):
@@ -93,26 +94,25 @@ def test_retriever_embeds_the_question_once(pool):
 
     embeddings = FakeEmbeddings()
     retriever = search.PostgresRetriever(engine=None, embedding_model=embeddings, k=1, search_type="similarity")
-    assert [d.metadata["chunk_id"] for d in retriever.invoke("dropout?")] == [1]
+    assert [d.chunk_id for d in retriever.invoke("dropout?")] == [1]
     assert embeddings.queries == ["dropout?"]
 
 
-def test_row_becomes_the_document_shape_the_prompt_reads():
+def test_row_becomes_a_chunk():
     row = _row(7, [0.0], 0.1, images=["dbv2/images/lm317_c7_img0.jpg"], tables=["<table></table>"])
-    document = document_from_row(row)
-    assert document.id == str(uuid.UUID(int=7))
-    assert document.page_content == "summary 7"
-    assert document.metadata == {
-        "source": "lm317",
-        "chunk_id": 7,
-        "raw_text": "text 7",
-        "tables_html": ["<table></table>"],
-        "image_paths": ["dbv2/images/lm317_c7_img0.jpg"],
-        "has_table": True,
-        "has_image": True,
-    }
+    chunk = chunk_from_row(row)
+    assert chunk == Chunk(
+        record_id=str(uuid.UUID(int=7)),
+        source="lm317",
+        chunk_id=7,
+        summary="summary 7",
+        raw_text="text 7",
+        tables_html=["<table></table>"],
+        image_paths=["dbv2/images/lm317_c7_img0.jpg"],
+    )
+    assert chunk.has_table and chunk.has_image
 
 
 def test_chunk_without_figures_has_empty_lists():
-    document = document_from_row(_row(8, [0.0], 0.1))
-    assert (document.metadata["image_paths"], document.metadata["has_image"]) == ([], False)
+    chunk = chunk_from_row(_row(8, [0.0], 0.1))
+    assert (chunk.image_paths, chunk.has_image) == ([], False)

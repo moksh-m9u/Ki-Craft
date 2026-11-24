@@ -14,6 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 
 from api.openapi_examples import error_responses
+from api.responses import chunk_page, document_list
 from api.schemas import ChunkPage, DocumentList
 
 router = APIRouter(tags=["documents"])
@@ -33,7 +34,7 @@ _MAX_PAGE_SIZE = 200
 )
 async def list_documents(request: Request) -> DocumentList:
     """List the indexed documents."""
-    return await request.app.state.service.documents()
+    return document_list(await request.app.state.service.documents())
 
 
 @router.get(
@@ -59,7 +60,7 @@ async def list_document_chunks(
     Raises:
         HTTPException: 404 when no document has that id.
     """
-    page = await request.app.state.service.document_chunks(document_id, offset, limit)
-    if page is None:
+    chunks, total = await request.app.state.service.document_chunks(document_id, offset, limit)
+    if total == 0:
         raise HTTPException(status_code=404, detail=f"Document not found: {document_id}")
-    return page
+    return chunk_page(chunks, total, offset, limit)

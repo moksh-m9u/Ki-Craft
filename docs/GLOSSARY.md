@@ -40,6 +40,8 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 **Generator.** A Python function that contains `yield`. Calling it runs nothing; it returns an iterator, and each `next()` runs the body up to the next `yield` and hands back that value. Here `generate_answer_stream` yields answer tokens one at a time, so the API can forward each token as soon as the model produces it, and `answer_query_stream` yields events: the chunks first, then tokens, then usage.
 
+**Dataclass.** A Python class declared with `@dataclass`, which writes the constructor, equality and printing from a list of typed fields. `src/chunk.py:Chunk` is one: every step of the query path passes chunks as `Chunk(record_id, source, chunk_id, summary, raw_text, tables_html, image_paths)`, so a reader sees what a chunk holds and a typo in a field name fails at once, where a string key in a metadata dict would silently read nothing. `frozen=True` makes the fields read-only after creation.
+
 **LangSmith trace (run).** LangSmith records each call to a function decorated with `@traceable` as a run, with its inputs, outputs and timing; runs started inside another run nest under it, and the whole tree is one trace. Here every query is one `AnswerQuery` run with `RetrieveChunks` and `GenerateAnswerStream` under it, and LangChain's own model run (for example `ChatGoogleGenerativeAI`, with tokens and cost) under that. When the decorated function is a generator, the run stays open until the last item and `reduce_fn` turns the yielded items into its output. `src/retrieval/generate.py`.
 
 **Run type.** The kind LangSmith files a run under: `chain` for a step of our own, `retriever` for retrieval, `llm` for a model call. Only `llm` runs get model, token and cost columns, so only the real model call (LangChain's run) uses it here.
@@ -116,7 +118,7 @@ Plain-language explanations of the technical terms used in this repository. Each
 
 **Record id.** The id each stored chunk gets when it is stored (the first 310 came from Chroma, new ones from ingestion), kept as `chunks.id` in Postgres, a random UUID such as `004ca22b-a528-444e-9c0e-27c8b5858ff5`. It never changes while the record exists, so figure URLs contain it (`/v1/images/{record_id}/{position}`). Not the same as `chunk_id`, which is only the chunk's position in one response.
 
-**Path traversal.** An attack where a request smuggles `..` or an absolute path into something the server turns into a file path, to read files outside the intended folder. The image route avoids it twice: the URL names a record, not a file, and the stored path must still resolve inside `IMAGES_DIR` (`src/documents.py:image_file`).
+**Path traversal.** An attack where a request smuggles `..` or an absolute path into something the server turns into a file path, to read files outside the intended folder. The image route avoids it twice: the URL names a record, not a file, and the stored path must still resolve inside `IMAGES_DIR` (`src/figures.py:figure_file`).
 
 **Cache-Control.** A response header that tells browsers and proxies how long they may reuse a response without asking again. Figures are sent with `public, max-age=86400` (anyone may cache them for a day), which is safe because a record's figures never change. `FileResponse` also sends `ETag` and `Last-Modified`, so a client can check cheaply whether its copy is still current.
 

@@ -20,10 +20,10 @@ import base64
 from dataclasses import dataclass
 from pathlib import Path
 
-from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
-from src.documents import chunk_text_and_tables, image_file, stored_image_paths
+from src.chunk import Chunk
+from src.figures import chunk_figure_file
 from src.tables import table_to_markdown
 
 
@@ -91,7 +91,7 @@ def figure_label(figure_number: int) -> str:
     return f"IMG{figure_number}"
 
 
-def _chunk_text(chunk: Document, chunk_number: int) -> str:
+def _chunk_text(chunk: Chunk, chunk_number: int) -> str:
     """One chunk as prompt text: its document, summary, original text and tables.
 
     Tables are sent as Markdown (see ``src/tables.py``).
@@ -99,22 +99,21 @@ def _chunk_text(chunk: Document, chunk_number: int) -> str:
     A chunk with no tables or figures was stored with its original text as
     its summary, so the text is written once.
     """
-    source = (chunk.metadata or {}).get("source") or "unknown document"
-    content = chunk_text_and_tables(chunk)
-    summary = (chunk.page_content or "").strip()
-    raw_text = (content["raw_text"] or "").strip()
+    source = chunk.source or "unknown document"
+    summary = (chunk.summary or "").strip()
+    raw_text = (chunk.raw_text or "").strip()
     lines = [f"[{chunk_label(chunk_number)}] Document: {source}"]
     if summary and summary != raw_text:
         lines.append(f"Summary:\n{summary}")
     if raw_text:
         lines.append(f"Text:\n{raw_text}")
-    tables = [markdown for markdown in map(table_to_markdown, content["tables_html"]) if markdown]
+    tables = [markdown for markdown in map(table_to_markdown, chunk.tables_html) if markdown]
     for number, table in enumerate(tables, start=1):
         lines.append(f"Table {number}:\n{table}")
     return "\n\n".join(lines)
 
 
-def select_figures(chunks: list[Document], max_images: int) -> list[PromptFigure]:
+def select_figures(chunks: list[Chunk], max_images: int) -> list[PromptFigure]:
     """Choose the figures to send to the model, in chunk order.
 
     Figures are numbered in prompt order. No figure file is read here. A
@@ -130,14 +129,13 @@ def select_figures(chunks: list[Document], max_images: int) -> list[PromptFigure
     """
     figures: list[PromptFigure] = []
     for chunk_number, chunk in enumerate(chunks, start=1):
-        metadata = chunk.metadata or {}
-        source = metadata.get("source") or "unknown document"
-        for position in range(len(stored_image_paths(metadata))):
-            path = image_file(metadata, position)
+        source = chunk.source or "unknown document"
+        for position in range(len(chunk.image_paths)):
+            path = chunk_figure_file(chunk, position)
             if path is None:
                 continue
             figures.append(
-                PromptFigure(figure_label(len(figures) + 1), chunk_number, position, chunk.id, source, path)
+                PromptFigure(figure_label(len(figures) + 1), chunk_number, position, chunk.record_id, source, path)
             )
             if len(figures) == max_images:
                 return figures
@@ -156,7 +154,7 @@ def _figure_blocks(figure: PromptFigure) -> list[dict]:
     ]
 
 
-def _build_message_content(chunks: list[Document], query: str, figures: list[PromptFigure]) -> list[dict]:
+def _build_message_content(chunks: list[Chunk], query: str, figures: list[PromptFigure]) -> list[dict]:
     """Build the user message: every chunk with its figures right after it, then the question.
 
     The context comes first and the question last, which suits long
@@ -173,7 +171,7 @@ def _build_message_content(chunks: list[Document], query: str, figures: list[Pro
     return content
 
 
-def build_messages(chunks: list[Document], query: str, figures: list[PromptFigure]) -> list[BaseMessage]:
+def build_messages(chunks: list[Chunk], query: str, figures: list[PromptFigure]) -> list[BaseMessage]:
     """The system rules and the user message sent to the model."""
     return [
         SystemMessage(content=_system_prompt(bool(figures))),

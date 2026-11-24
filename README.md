@@ -78,7 +78,7 @@ flowchart TB
         Q["question"]
         EMBED_Q["src/embed.py<br/>embed the question"]
         MMR["search.py<br/>pgvector cosine, MMR keeps 5 of 20"]
-        REBUILD["src/documents.py<br/>rebuild text, tables, figures"]
+        REBUILD["src/db/chunks.py<br/>rows to Chunk: text, tables, figures"]
         GEN["prompt.py, generate.py<br/>multimodal prompt, Gemini 3.5 Flash-Lite"]
         ANSWER["answer"]
         Q --> EMBED_Q --> MMR --> REBUILD --> GEN --> ANSWER

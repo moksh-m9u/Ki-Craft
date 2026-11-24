@@ -9,6 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Request
 
 from api.openapi_examples import RETRIEVE_BODY_EXAMPLES, error_responses
+from api.responses import retrieve_response
 from api.schemas import RetrieveRequest, RetrieveResponse
 
 router = APIRouter(tags=["retrieval"])
@@ -31,4 +32,5 @@ async def retrieve(
     req: Annotated[RetrieveRequest, Body(openapi_examples=RETRIEVE_BODY_EXAMPLES)],
 ) -> RetrieveResponse:
     """Retrieve chunks for a query; returns text, tables and images."""
-    return await request.app.state.service.retrieve(req.query, req.top_k)
+    chunks = await request.app.state.service.retrieve(req.query, req.top_k)
+    return retrieve_response(req.query, chunks)

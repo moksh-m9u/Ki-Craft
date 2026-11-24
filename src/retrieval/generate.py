@@ -3,8 +3,9 @@
 The query path's last step. ``answer_query_stream`` retrieves chunks
 (``src/retrieval/search.py``), chooses figures and builds the messages
 (``src/retrieval/prompt.py``), then streams the answer from the chat model
-it is given while counting tokens and pricing the answer. Retrieval and
-generation run under one LangSmith trace, so a query shows up as one run.
+it is given; ``src/retrieval/usage.py`` counts its tokens and prices it.
+Retrieval and generation run under one LangSmith trace, so a query shows up
+as one run.
 The default model and a user-chosen model share this one path; only the
 ``llm`` passed in differs.
 """
@@ -15,54 +16,22 @@ import time
 from collections.abc import Generator, Iterator, Sequence
 from typing import Any
 
-from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
 from langsmith import traceable
 
-from config.providers import get_model
 from config.settings import GENERATION_MAX_IMAGES
+from src.chunk import Chunk
 from src.llm import LLMProviderError
 from src.logger import get_logger
 from src.retrieval.prompt import PromptFigure, build_messages, prompt_stats, select_figures
 from src.retrieval.search import retrieve_chunks
+from src.retrieval.usage import capture_usage, estimate_cost
 
 logger = get_logger(__name__)
 
-# One item from answer_query_stream: ("chunks", list[Document]),
+# One item from answer_query_stream: ("chunks", list[Chunk]),
 # ("figures", list[PromptFigure]), ("token", str) or ("usage", dict).
 StreamEvent = tuple[str, Any]
-
-
-def _capture_usage(chunk: Any, usage: dict[str, Any]) -> None:
-    """Add the token counts on one streamed chunk to the totals in ``usage``.
-
-    LangChain gives every chunk's ``usage_metadata`` as the tokens added by
-    that chunk, so the totals are the sum over the stream. Gemini reports
-    running totals, which ``ChatGoogleGenerativeAI`` turns into these
-    differences; OpenAI-style APIs send the whole count once, on a final
-    chunk with no text, and nothing on the others.
-    """
-    counts = getattr(chunk, "usage_metadata", None) or {}
-    for key in ("input_tokens", "output_tokens", "total_tokens"):
-        if isinstance(counts.get(key), int):
-            usage[key] = usage.get(key, 0) + counts[key]
-
-
-def _estimate_cost(provider_id: str, model_id: str, usage: dict[str, Any]) -> float | None:
-    """Estimate the answer's cost in USD from its token counts and the model's prices.
-
-    Prices come from the model's entry in ``config/providers.py``. None when
-    the model is not in the catalogue or both its prices are 0, which the
-    catalogue uses for "unknown", so an unknown price is never shown as $0.
-    """
-    model = get_model(provider_id, model_id)
-    if model is None or not (model.input_price_per_1m or model.output_price_per_1m):
-        return None
-    cost = (
-        (usage.get("input_tokens") or 0) / 1_000_000 * model.input_price_per_1m
-        + (usage.get("output_tokens") or 0) / 1_000_000 * model.output_price_per_1m
-    )
-    return round(cost, 6)
 
 
 def _extract_text(content: Any) -> str:
@@ -174,7 +143,7 @@ def answer_query_stream(
         send_images: False for a text-only model; no figures are sent.
 
     Yields:
-        ``("chunks", list[Document])`` once, as soon as retrieval finishes;
+        ``("chunks", list[Chunk])`` once, as soon as retrieval finishes;
         ``("figures", list[PromptFigure])`` once, the figures the prompt
         carries (empty for a text-only model); then ``("token", str)`` for
         each piece of the answer; then
@@ -207,7 +176,7 @@ def answer_query_stream(
     reduce_fn=_answer_output,
 )
 def generate_answer_stream(
-    chunks: list[Document],
+    chunks: list[Chunk],
     query: str,
     llm: BaseChatModel,
     provider_id: str,
@@ -274,13 +243,13 @@ def generate_answer_stream(
             if token_text:
                 wrote_text = True
                 yield token_text
-            _capture_usage(chunk, usage)
+            capture_usage(chunk, usage)
             finish_reason = (chunk.response_metadata or {}).get("finish_reason") or finish_reason
     except Exception as exc:
         logger.warning("Model provider failed: %s", type(exc).__name__)
         raise LLMProviderError(f"The model provider failed: {exc}") from exc
     usage["latency_ms"] = round((time.perf_counter() - start) * 1000, 1)
-    usage["estimated_cost_usd"] = _estimate_cost(provider_id, model_id, usage)
+    usage["estimated_cost_usd"] = estimate_cost(provider_id, model_id, usage)
 
     if not wrote_text:
         raise LLMProviderError(_empty_answer_message(finish_reason, usage))

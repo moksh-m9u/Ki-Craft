@@ -13,7 +13,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores.utils import maximal_marginal_relevance
 from langsmith import traceable
@@ -26,8 +25,9 @@ from config.settings import (
     RETRIEVAL_SCORE_THRESHOLD,
     RETRIEVAL_SEARCH_TYPE,
 )
+from src.chunk import Chunk
+from src.db.chunks import chunk_from_row, stored_chunks_query
 from src.db.schema import chunks
-from src.documents import chunk_text_and_tables, document_from_row, stored_chunks_query, stored_image_count
 from src.logger import get_logger
 
 logger = get_logger(__name__)
@@ -59,7 +59,7 @@ def nearest_chunks(engine: Engine, vector: list[float], n: int) -> list[Row]:
         return list(connection.execute(query))
 
 
-def search_postgres(engine: Engine, vector: list[float], search_type: str, k: int) -> list[Document]:
+def search_postgres(engine: Engine, vector: list[float], search_type: str, k: int) -> list[Chunk]:
     """Find chunks for one question embedding with the configured search type.
 
     Each type does what LangChain's Chroma retriever did, so answers do not
@@ -80,7 +80,7 @@ def search_postgres(engine: Engine, vector: list[float], search_type: str, k: in
         k: How many chunks to return (fewer for the threshold type).
 
     Returns:
-        The chunks as ``Document`` objects, best first.
+        The chunks, best first.
 
     Raises:
         ValueError: If ``search_type`` is not a known search type.
@@ -99,7 +99,7 @@ def search_postgres(engine: Engine, vector: list[float], search_type: str, k: in
         rows = [row for row in nearest_chunks(engine, vector, k) if 1 - row.distance >= RETRIEVAL_SCORE_THRESHOLD]
     else:
         raise ValueError(f"Unknown search type {search_type!r}")
-    return [document_from_row(row) for row in rows]
+    return [chunk_from_row(row) for row in rows]
 
 
 @dataclass(frozen=True)
@@ -118,13 +118,38 @@ class PostgresRetriever:
     k: int = RETRIEVAL_K
     search_type: str = RETRIEVAL_SEARCH_TYPE
 
-    def invoke(self, query: str) -> list[Document]:
+    def invoke(self, query: str) -> list[Chunk]:
         """Return the chunks for ``query`` (one watsonx call, one or two SQL queries)."""
         return search_postgres(self.engine, self.embedding_model.embed_query(query), self.search_type, self.k)
 
 
-@traceable(run_type="retriever", name="RetrieveChunks")
-def retrieve_chunks(retriever, query: str) -> list[Document]:
+def _trace_documents(chunks: list[Chunk]) -> dict:
+    """Record the chunks in the layout LangSmith shows as retrieved documents.
+
+    LangSmith renders a ``retriever`` run's output as a list of documents when
+    each has ``page_content`` and ``metadata``, as LangChain's ``Document``
+    does. The figure paths are left out; the trace attaches the figures sent.
+    """
+    return {
+        "documents": [
+            {
+                "type": "Document",
+                "page_content": chunk.summary,
+                "metadata": {
+                    "record_id": chunk.record_id,
+                    "source": chunk.source,
+                    "chunk_id": chunk.chunk_id,
+                    "tables": len(chunk.tables_html),
+                    "figures": len(chunk.image_paths),
+                },
+            }
+            for chunk in chunks
+        ]
+    }
+
+
+@traceable(run_type="retriever", name="RetrieveChunks", process_outputs=_trace_documents)
+def retrieve_chunks(retriever, query: str) -> list[Chunk]:
     """Run retrieval and return matching chunks.
 
     Args:
@@ -135,8 +160,8 @@ def retrieve_chunks(retriever, query: str) -> list[Document]:
         List of retrieved document chunks.
     """
     chunks = retriever.invoke(query)
-    total_images = sum(stored_image_count(chunk) for chunk in chunks)
-    total_tables = sum(len(chunk_text_and_tables(chunk)["tables_html"]) for chunk in chunks)
+    total_images = sum(len(chunk.image_paths) for chunk in chunks)
+    total_tables = sum(len(chunk.tables_html) for chunk in chunks)
     logger.info(
         "Retrieved %d chunks (%d images, %d tables)",
         len(chunks),

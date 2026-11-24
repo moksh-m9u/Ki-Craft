@@ -18,11 +18,10 @@ from __future__ import annotations
 
 import json
 
-from langchain_core.documents import Document
 from langchain_core.messages import AIMessageChunk
 
 from src.browse import DocumentSummary
-from src.documents import chunk_text_and_tables, stored_image_paths
+from src.chunk import Chunk
 
 # Starts with the JPEG magic bytes so it looks like a real figure.
 JPEG_BYTES = b"\xff\xd8\xff\xe0fake-jpeg-for-tests"
@@ -35,39 +34,34 @@ ESCAPING_ID = "33333333-3333-4333-8333-333333333333"
 LM317_FIRST_ID = "44444444-4444-4444-8444-444444444444"
 
 
-def _fake_chunks() -> list[Document]:
+def _fake_chunks() -> list[Chunk]:
     """Two stored chunks: one with a table and no figure, one with a figure file."""
-    lm317 = Document(
-        id=LM317_ID,
-        page_content="LM317 summary: adjustable regulator with ADJ, VOUT, VIN pins.",
-        metadata={
-            "source": "lm317",
-            "chunk_id": 2,
-            "raw_text": "Pin 1 ADJ, pin 2 VOUT, pin 3 VIN.",
-            "tables_html": ["<table><tr><td>ADJ</td></tr></table>"],
-            "image_paths": [],
-        },
+    lm317 = Chunk(
+        record_id=LM317_ID,
+        source="lm317",
+        chunk_id=2,
+        summary="LM317 summary: adjustable regulator with ADJ, VOUT, VIN pins.",
+        raw_text="Pin 1 ADJ, pin 2 VOUT, pin 3 VIN.",
+        tables_html=["<table><tr><td>ADJ</td></tr></table>"],
     )
-    tlv1117 = Document(
-        id=TLV1117_ID,
-        page_content="TLV1117 summary: fixed 3.3 V LDO.",
-        metadata={
-            "source": "tlv1117",
-            "chunk_id": 1,
-            "raw_text": "Dropout 1.1 V at 800 mA.",
-            "tables_html": [],
-            "image_paths": ["dbv2/images/tlv1117_c1_img0.jpg"],
-        },
+    tlv1117 = Chunk(
+        record_id=TLV1117_ID,
+        source="tlv1117",
+        chunk_id=1,
+        summary="TLV1117 summary: fixed 3.3 V LDO.",
+        raw_text="Dropout 1.1 V at 800 mA.",
+        image_paths=["dbv2/images/tlv1117_c1_img0.jpg"],
     )
     return [lm317, tlv1117]
 
 
-def _stored_chunks() -> list[Document]:
+def _stored_chunks() -> list[Chunk]:
     """Every record in the fake store: the retrievable chunks plus LM317's first chunk."""
-    lm317_first = Document(
-        id=LM317_FIRST_ID,
-        page_content="LM317 overview: 1.2 V to 37 V adjustable regulator.",
-        metadata={"source": "lm317", "chunk_id": 1, "raw_text": "", "tables_html": [], "image_paths": []},
+    lm317_first = Chunk(
+        record_id=LM317_FIRST_ID,
+        source="lm317",
+        chunk_id=1,
+        summary="LM317 overview: 1.2 V to 37 V adjustable regulator.",
     )
     return _fake_chunks() + [lm317_first]
 
@@ -78,7 +72,7 @@ class _FakeRetriever:
     def __init__(self, k: int):
         self.k = k
 
-    def invoke(self, query: str) -> list[Document]:
+    def invoke(self, query: str) -> list[Chunk]:
         """Mimic a LangChain retriever's ``invoke``."""
         return _fake_chunks()[: self.k]
 
@@ -89,39 +83,36 @@ class FakeStore:
     @staticmethod
     def _records() -> dict:
         """Every stored record by id, plus one whose figure path climbs out of the images folder."""
-        records = {doc.id: doc for doc in _stored_chunks()}
-        records[ESCAPING_ID] = Document(
-            id=ESCAPING_ID,
-            page_content="",
-            metadata={"source": "escape", "chunk_id": 1, "image_paths": ["dbv2/images/../../secret.txt"]},
+        records = {chunk.record_id: chunk for chunk in _stored_chunks()}
+        records[ESCAPING_ID] = Chunk(
+            record_id=ESCAPING_ID,
+            source="escape",
+            chunk_id=1,
+            summary="",
+            image_paths=["dbv2/images/../../secret.txt"],
         )
         return records
 
     def list_documents(self, engine) -> list[DocumentSummary]:
         """Mimic ``list_documents``: counts per source, sorted by name."""
         counts: dict[str, list[int]] = {}
-        for doc in _stored_chunks():
-            source = doc.metadata["source"]
-            n, images, tables = counts.get(source, [0, 0, 0])
-            counts[source] = [
-                n + 1,
-                images + len(stored_image_paths(doc.metadata)),
-                tables + len(chunk_text_and_tables(doc)["tables_html"]),
-            ]
+        for chunk in _stored_chunks():
+            n, images, tables = counts.get(chunk.source, [0, 0, 0])
+            counts[chunk.source] = [n + 1, images + len(chunk.image_paths), tables + len(chunk.tables_html)]
         return [DocumentSummary(source, *counts[source]) for source in sorted(counts)]
 
-    def document_chunks(self, engine, document_id: str, offset: int, limit: int) -> tuple[list[Document], int]:
+    def document_chunks(self, engine, document_id: str, offset: int, limit: int) -> tuple[list[Chunk], int]:
         """Mimic ``document_chunks``: one document's chunks by ``chunk_id``, paged."""
         found = sorted(
-            (doc for doc in _stored_chunks() if doc.metadata["source"] == document_id),
-            key=lambda doc: doc.metadata["chunk_id"],
+            (chunk for chunk in _stored_chunks() if chunk.source == document_id),
+            key=lambda chunk: chunk.chunk_id,
         )
         return found[offset : offset + limit], len(found)
 
     def figure_path(self, engine, record_id: str, position: int) -> str | None:
         """Mimic ``figure_path``: the stored path, or None."""
         record = self._records().get(record_id)
-        paths = stored_image_paths(record.metadata) if record else []
+        paths = record.image_paths if record else []
         return paths[position] if 0 <= position < len(paths) else None
 
 

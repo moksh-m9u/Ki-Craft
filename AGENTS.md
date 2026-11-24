@@ -100,17 +100,21 @@ src/retrieval/
   search.py               pgvector search (similarity, MMR, threshold), PostgresRetriever
   prompt.py               build the multimodal prompt, label chunks (C1) and figures (IMG1)
   citations.py            read the finished answer's [C1] and [IMG1] citations and check them
-  generate.py             retrieve, stream the answer from the model, count tokens, price, trace
+  generate.py             retrieve, stream the answer from the model, trace
+  usage.py                add up streamed token counts and price them from the catalogue
+src/chunk.py            Chunk: the typed chunk every query step passes (no LangChain Document)
+src/figures.py          a stored figure path -> its file, only inside IMAGES_DIR
+src/db/chunks.py        the shared SELECT for stored chunks, row -> Chunk
 src/db/connection.py    Neon URL -> SQLAlchemy URL for psycopg 3
 src/db/store.py         one document's rows: is_stored, write_document (one transaction), read_document, copy_document
 src/db/schema.py        Postgres tables (documents, chunks with vector(768), images), SQLAlchemy Core
 migrations/             Alembic migrations that create those tables (alembic.ini at the root)
-src/documents.py        turns stored chunk metadata back into text, tables, images
 src/browse.py           lists stored documents and a document's chunks in order (no search)
 api/main.py             FastAPI app: CORS, lifespan, include_router calls
 api/routers/            endpoints by purpose: system, retrieval, query, providers, documents, images
 api/openapi_examples.py docs text and example payloads shown at /docs
-api/service.py          RAGService: owns the store and retriever, picks the default LLM
+api/service.py          RAGService: owns the store and retriever, picks the default LLM; returns Chunk objects
+api/responses.py        Chunk, PromptFigure, DocumentSummary -> response bodies; builds figure URLs
 api/schemas.py          Pydantic request and response models
 api/requirements.txt    the packages the Docker image installs for the API
 app/dashboard.py        Streamlit entry point: page config, styles, st.navigation (one URL per page)

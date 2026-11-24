@@ -17,11 +17,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from langchain_core.documents import Document
 from sqlalchemy import Engine, func, select
 
+from src.chunk import Chunk
+from src.db.chunks import chunk_from_row, stored_chunks_query
 from src.db.schema import chunks, documents, images
-from src.documents import document_from_row, stored_chunks_query
 
 
 @dataclass(frozen=True)
@@ -74,7 +74,7 @@ def list_documents(engine: Engine) -> list[DocumentSummary]:
         return [DocumentSummary(source, int(n), int(f), int(t)) for source, n, f, t in connection.execute(query)]
 
 
-def document_chunks(engine: Engine, document_id: str, offset: int, limit: int) -> tuple[list[Document], int]:
+def document_chunks(engine: Engine, document_id: str, offset: int, limit: int) -> tuple[list[Chunk], int]:
     """Return one page of a document's chunks, in reading order.
 
     Args:
@@ -84,9 +84,8 @@ def document_chunks(engine: Engine, document_id: str, offset: int, limit: int) -
         limit: Most chunks to return.
 
     Returns:
-        ``(chunks, total)``: the page as ``Document`` objects (record id,
-        summary as ``page_content``, original content in ``metadata``), and how
-        many chunks the document holds. ``total`` is 0 for an unknown document.
+        ``(chunks, total)``: the page as ``Chunk`` objects, and how many
+        chunks the document holds. ``total`` is 0 for an unknown document.
     """
     in_document = documents.c.source == document_id
     count = select(func.count()).select_from(chunks.join(documents)).where(in_document)
@@ -94,7 +93,7 @@ def document_chunks(engine: Engine, document_id: str, offset: int, limit: int) -
     with engine.connect() as connection:
         total = connection.execute(count).scalar_one()
         rows = list(connection.execute(page)) if total else []
-    return [document_from_row(row) for row in rows], total
+    return [chunk_from_row(row) for row in rows], total
 
 
 def figure_path(engine: Engine, record_id: str, position: int) -> str | None:
@@ -108,7 +107,7 @@ def figure_path(engine: Engine, record_id: str, position: int) -> str | None:
     Returns:
         The path as stored at ingestion, relative to the repository root. The
         caller still checks it lies inside ``IMAGES_DIR``
-        (``src/documents.py:figure_file``).
+        (``src/figures.py:figure_file``).
     """
     query = select(images.c.path).where(images.c.chunk_id == record_id, images.c.position == position)
     with engine.connect() as connection:

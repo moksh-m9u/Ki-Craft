@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
-import src.documents
+import src.figures
 from api.main import app
 from tests.api.fakes import JPEG_BYTES, LM317_ID, TLV1117_ID, ESCAPING_ID
 
@@ -47,7 +47,7 @@ def test_building_a_response_reads_no_image_file(client, monkeypatch):
     def opened(path):
         raise AssertionError(f"a response build read the file {path}")
 
-    monkeypatch.setattr(src.documents.Path, "read_bytes", opened)
+    monkeypatch.setattr(src.figures.Path, "read_bytes", opened)
     assert client.post("/v1/retrieve", json={"query": "x", "top_k": 2}).status_code == 200
 
 def test_image_url_serves_the_file(client):
