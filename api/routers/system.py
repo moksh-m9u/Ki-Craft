@@ -39,7 +39,7 @@ def root(request: Request) -> dict:
     summary="Health check",
     description=(
         "Returns 200 when the database answers and 503 when it does not. "
-        "The first call may take a few seconds while the store loads."
+        "The first call may take a few seconds while the database connects."
     ),
     response_description="The service is ready.",
     responses={503: {"description": "The database could not be reached."}},
@@ -56,6 +56,6 @@ async def health(request: Request):
     except StoreUnavailableError as exc:
         return JSONResponse(
             status_code=503,
-            content={"status": "error", "vector_store": "unavailable", "detail": str(exc)},
+            content={"status": "error", "database": "unavailable", "detail": str(exc)},
         )
-    return {"status": "ok", "vector_store": "loaded"}
+    return {"status": "ok", "database": "connected"}

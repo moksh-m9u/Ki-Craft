@@ -32,7 +32,7 @@ def test_api_is_versioned_but_root_and_health_are_not(client):
 def test_health_ok(client):
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "vector_store": "loaded"}
+    assert response.json() == {"status": "ok", "database": "connected"}
 
 def test_health_reports_store_failure_as_503(client, backend):
     """A broken store is a 503, so an uptime probe can read the code alone."""

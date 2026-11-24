@@ -141,7 +141,7 @@ uv sync --extra local
 uvicorn api.main:app --reload --port 8001
 ```
 
-The first request to `/health` should return `{"status":"ok","vector_store":"loaded"}`:
+The first request to `/health` should return `{"status":"ok","database":"connected"}`:
 
 ```bash
 curl http://127.0.0.1:8001/health
@@ -204,12 +204,6 @@ API_BASE_URL=http://127.0.0.1:8001 streamlit run app/dashboard.py
 Every page reads through the API, so the dashboard needs no local data files.
 
 ### On Streamlit Community Cloud
-
-A second, smaller app shows evaluation results:
-
-```bash
-streamlit run app/rag_eval_dashboard.py
-```
 
 Set the main file path to `app/dashboard.py`, the Python version (Advanced settings) to 3.13, and the secret `API_BASE_URL = "https://<your API host>"`. Streamlit Cloud reads the dependency file next to the main file first, so it installs `app/requirements.txt`; with another main file path it would fall back to `uv.lock` and try to install the whole ingestion stack.
 
@@ -454,7 +448,6 @@ app/
   state.py               session state defaults and the loaded document
   styles.css             the dashboard's CSS
   api_client.py          the only place the UI talks to the backend
-  rag_eval_dashboard.py  Streamlit viewer for evaluation results
   requirements.txt       the dashboard's packages (used by Streamlit Community Cloud)
 migrations/              Alembic migrations that create the Postgres tables (alembic.ini at the root)
 scripts/                 ingestion (ingest.py) and the dev-to-production copy (copy_document.py)

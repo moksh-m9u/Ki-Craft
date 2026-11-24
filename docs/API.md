@@ -24,7 +24,7 @@ supporting evidence: the exact document chunks, their tables, and their figures.
 | Endpoint | Method | Purpose | Returns |
 |---|---|---|---|
 | `/` | GET | Index / endpoint list | `{name, version, endpoints}` |
-| `/health` | GET | Is the service up? | `{status: "ok", vector_store: "loaded"}`, or **503** when the store cannot load |
+| `/health` | GET | Is the service up? | `{status: "ok", database: "connected"}`, or **503** when the database cannot be reached |
 | `/v1/retrieve` | POST | Get evidence **without** an answer | `RetrieveResponse` |
 | `/v1/query` | POST | Get evidence **and** a full answer | `QueryResponse` |
 | `/v1/query/stream` | POST | Same body as `/v1/query`, with a streamed answer | Server-Sent Events |

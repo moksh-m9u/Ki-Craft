@@ -479,7 +479,7 @@ Clients never notice any of these changes.
 
 ## 14. Testing and evaluation
 
-**Today:** 29 pytest tests that mock external services, plus `evals/testing.json` and an evaluation dashboard.
+**Today:** 29 pytest tests that mock external services, plus `evals/golden_set.json` (76 questions); the old `evals/testing.json` and its dashboard were deleted on 2026-11-24.
 
 Unit tests prove the code does what it says. They do not prove answers are right. The evaluation set does that: for each question, the expected document, the expected page or chunk, and the expected answer.
 

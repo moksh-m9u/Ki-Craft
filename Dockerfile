@@ -1,8 +1,7 @@
 # Multimodal RAG - FastAPI backend image.
 #
-# Railway auto-detects a Dockerfile named `Dockerfile` at the repo root and
-# uses it instead of the built-in builders.  The `PORT` env var set by Railway
-# (default 8000) is bound at startup.
+# Render builds the API from this image. The server binds the `PORT` variable
+# the platform sets (default 8000).
 #
 # Build:   docker build -t multimodal-rag-api .
 # Run:     docker run --rm -p 8000:8000 --env-file .env multimodal-rag-api
@@ -34,5 +33,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
     CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.getenv('PORT', '8000'), timeout=5)"
 
-# Single worker: the vector store + embedding client are heavy in-memory objects.
+# Single worker: one database pool and one embedding client per process are enough here.
 CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
